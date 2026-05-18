@@ -1,0 +1,1065 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LPBF Machine Control</title>
+<style>
+:root {
+  --blue:    #2563eb;
+  --blue-dk: #1d4ed8;
+  --green:   #16a34a;
+  --amber:   #d97706;
+  --red:     #dc2626;
+  --gray-0:  #f9fafb;
+  --gray-1:  #f3f4f6;
+  --gray-2:  #e5e7eb;
+  --gray-3:  #d1d5db;
+  --gray-5:  #6b7280;
+  --gray-7:  #374151;
+  --gray-9:  #111827;
+  --r:       8px;
+  --sh:      0 1px 3px rgba(0,0,0,.10), 0 1px 2px rgba(0,0,0,.06);
+  --sh-lg:   0 10px 25px -5px rgba(0,0,0,.15);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--gray-0);
+  color: var(--gray-9);
+  line-height: 1.5;
+  font-size: 14px;
+}
+
+/* ---- Header ---- */
+header {
+  background: #fff;
+  border-bottom: 1px solid var(--gray-2);
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  height: 52px;
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  box-shadow: var(--sh);
+}
+.logo { font-weight: 700; font-size: 1rem; color: var(--blue); letter-spacing: -.3px; white-space: nowrap; }
+nav { display: flex; gap: 4px; }
+nav button {
+  padding: 6px 14px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: var(--r);
+  color: var(--gray-5);
+  font-size: .875rem;
+  font-weight: 500;
+  transition: background .12s, color .12s;
+}
+nav button:hover  { background: var(--gray-1); color: var(--gray-7); }
+nav button.active { background: var(--blue); color: #fff; }
+
+/* ---- Layout ---- */
+main { max-width: 1200px; margin: 0 auto; padding: 24px; }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* ---- Section header ---- */
+.sec-hd {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+.sec-hd h2 { font-size: 1.1rem; font-weight: 600; }
+
+/* ---- Buttons ---- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 14px;
+  border: none;
+  border-radius: var(--r);
+  cursor: pointer;
+  font-size: .875rem;
+  font-weight: 500;
+  transition: filter .12s;
+  white-space: nowrap;
+}
+.btn:hover { filter: brightness(.93); }
+.btn-primary  { background: var(--blue);  color: #fff; }
+.btn-green    { background: var(--green); color: #fff; }
+.btn-danger   { background: var(--red);   color: #fff; }
+.btn-ghost    { background: #fff; color: var(--gray-7); border: 1px solid var(--gray-3); }
+.btn-sm       { padding: 4px 10px; font-size: .8rem; }
+
+/* ---- Cards ---- */
+.card {
+  background: #fff;
+  border-radius: var(--r);
+  border: 1px solid var(--gray-2);
+  box-shadow: var(--sh);
+}
+
+/* ---- Machine grid ---- */
+.machine-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 16px;
+}
+.machine-card {
+  background: #fff;
+  border: 1px solid var(--gray-2);
+  border-radius: var(--r);
+  box-shadow: var(--sh);
+  overflow: hidden;
+}
+.machine-card .accent {
+  height: 4px;
+  width: 100%;
+}
+.accent-idle        { background: var(--green); }
+.accent-printing    { background: var(--blue); }
+.accent-maintenance { background: var(--amber); }
+.accent-offline     { background: var(--gray-3); }
+
+.mc-body { padding: 16px; }
+.mc-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 6px;
+}
+.mc-name  { font-weight: 600; font-size: 1rem; }
+.mc-meta  { font-size: .75rem; color: var(--gray-5); margin-bottom: 12px; }
+
+/* status badge */
+.badge {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 99px;
+  font-size: .7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.badge-idle        { background: #dcfce7; color: #15803d; }
+.badge-printing    { background: #dbeafe; color: #1d4ed8; }
+.badge-maintenance { background: #fef3c7; color: #92400e; }
+.badge-offline     { background: var(--gray-1); color: var(--gray-5); }
+.badge-pending     { background: #f3f4f6; color: #374151; }
+.badge-scheduled   { background: #ede9fe; color: #5b21b6; }
+.badge-completed   { background: #dcfce7; color: #15803d; }
+.badge-cancelled   { background: #fee2e2; color: #991b1b; }
+.badge-queued      { background: #ede9fe; color: #5b21b6; }
+
+.mc-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.stat {
+  background: var(--gray-0);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+.stat-lbl { font-size: .68rem; text-transform: uppercase; letter-spacing: .05em; color: var(--gray-5); }
+.stat-val { font-size: 1.05rem; font-weight: 700; color: var(--gray-9); }
+
+.mc-queue {
+  border-top: 1px solid var(--gray-1);
+  padding-top: 10px;
+  font-size: .8rem;
+  color: var(--gray-5);
+}
+.mc-queue-lbl {
+  font-size: .68rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--gray-3);
+  margin-bottom: 5px;
+}
+.qi {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 0;
+  border-bottom: 1px dashed var(--gray-1);
+  color: var(--gray-7);
+}
+.qi:last-child { border-bottom: none; }
+
+.pulse-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  background: var(--blue);
+  border-radius: 50%;
+  margin-right: 5px;
+  animation: pulse 1.4s infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.7)} }
+
+.mc-actions { padding: 10px 16px; border-top: 1px solid var(--gray-1); display: flex; gap: 6px; }
+
+/* ---- Orders table ---- */
+.tbl { width: 100%; border-collapse: collapse; }
+.tbl th {
+  text-align: left;
+  padding: 10px 14px;
+  background: var(--gray-0);
+  border-bottom: 1px solid var(--gray-2);
+  font-size: .72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--gray-5);
+  white-space: nowrap;
+}
+.tbl td {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--gray-1);
+  vertical-align: middle;
+}
+.tbl tr:last-child td { border-bottom: none; }
+.tbl tr:hover td { background: var(--gray-0); }
+
+/* ---- Modal ---- */
+.overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  z-index: 500;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.overlay.open { display: flex; }
+.modal {
+  background: #fff;
+  border-radius: 12px;
+  padding: 28px;
+  width: 100%;
+  max-width: 580px;
+  max-height: 92vh;
+  overflow-y: auto;
+  box-shadow: var(--sh-lg);
+}
+.modal-hd {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 22px;
+}
+.modal-hd h3 { font-size: 1.1rem; font-weight: 600; }
+.modal-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.4rem;
+  line-height: 1;
+  color: var(--gray-5);
+  padding: 2px 6px;
+  border-radius: var(--r);
+}
+.modal-close:hover { background: var(--gray-1); color: var(--gray-9); }
+
+/* ---- Forms ---- */
+.fg { margin-bottom: 14px; }
+.fg label {
+  display: block;
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--gray-7);
+  margin-bottom: 4px;
+}
+.fg-sub { font-size: .72rem; color: var(--gray-5); margin-top: 3px; }
+input, select, textarea {
+  width: 100%;
+  padding: 7px 11px;
+  border: 1px solid var(--gray-3);
+  border-radius: var(--r);
+  font-size: .875rem;
+  font-family: inherit;
+  background: #fff;
+  transition: border-color .15s, box-shadow .15s;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(37,99,235,.12);
+}
+.row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.modal-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+
+/* ---- Parts panel ---- */
+.parts-panel {
+  border: 1px solid var(--gray-2);
+  border-radius: var(--r);
+  margin-bottom: 8px;
+  overflow: hidden;
+  min-height: 48px;
+}
+.part-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--gray-1);
+  font-size: .875rem;
+}
+.part-row:last-child { border-bottom: none; }
+.add-part-box {
+  background: var(--gray-0);
+  border: 1px solid var(--gray-2);
+  border-radius: var(--r);
+  padding: 12px;
+}
+.add-part-lbl {
+  font-size: .68rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--gray-5);
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+/* ---- Recommendation cards ---- */
+.rec-card {
+  border: 2px solid var(--gray-2);
+  border-radius: var(--r);
+  padding: 16px;
+  margin-bottom: 12px;
+  transition: border-color .15s;
+}
+.rec-card.best { border-color: var(--blue); background: #eff6ff; }
+.rec-card.unavail { opacity: .55; }
+.rec-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 6px; }
+.rec-reasons { list-style: none; font-size: .8rem; color: var(--gray-7); }
+.rec-reasons li { padding: 2px 0; }
+.rec-reasons li::before { content: "✓  "; color: var(--green); }
+.rec-bot { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; flex-wrap: wrap; gap: 8px; }
+.rec-nums { font-size: .78rem; color: var(--gray-5); }
+
+/* ---- Alert ---- */
+.alert {
+  padding: 11px 14px;
+  border-radius: var(--r);
+  font-size: .875rem;
+  margin-bottom: 14px;
+  border-width: 1px;
+  border-style: solid;
+}
+.alert-info  { background: #eff6ff; color: #1e40af; border-color: #bfdbfe; }
+.alert-warn  { background: #fffbeb; color: #92400e; border-color: #fde68a; }
+.alert-ok    { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
+
+/* ---- Empty state ---- */
+.empty { text-align: center; padding: 36px 20px; color: var(--gray-5); }
+.empty strong { display: block; font-size: .95rem; margin-bottom: 6px; color: var(--gray-7); }
+
+/* ---- Toast ---- */
+#toast {
+  position: fixed;
+  top: 64px;
+  right: 20px;
+  z-index: 9999;
+  background: var(--green);
+  color: #fff;
+  padding: 11px 18px;
+  border-radius: var(--r);
+  font-size: .875rem;
+  box-shadow: var(--sh-lg);
+  opacity: 0;
+  transition: opacity .2s;
+  pointer-events: none;
+}
+#toast.show { opacity: 1; }
+
+/* ---- Spinner ---- */
+.spin {
+  display: inline-block;
+  width: 18px; height: 18px;
+  border: 2px solid var(--gray-2);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">⬡ LPBF Control</div>
+  <nav>
+    <button class="active" onclick="nav('dashboard',this)">Dashboard</button>
+    <button onclick="nav('orders',this)">Orders</button>
+    <button onclick="nav('machines',this)">Machines</button>
+  </nav>
+</header>
+
+<main>
+
+  <!-- ===== DASHBOARD ===== -->
+  <div id="tab-dashboard" class="tab-content active">
+    <div class="sec-hd">
+      <h2>Machine Overview</h2>
+      <button class="btn btn-primary" onclick="openModal('m-new-order')">+ New Order</button>
+    </div>
+    <div id="dash-machines" class="machine-grid"></div>
+
+    <div class="sec-hd" style="margin-top:32px">
+      <h2>Active Queue</h2>
+    </div>
+    <div id="dash-queue"></div>
+  </div>
+
+  <!-- ===== ORDERS ===== -->
+  <div id="tab-orders" class="tab-content">
+    <div class="sec-hd">
+      <h2>Orders</h2>
+      <button class="btn btn-primary" onclick="openModal('m-new-order')">+ New Order</button>
+    </div>
+    <div class="card" style="overflow:hidden">
+      <table class="tbl">
+        <thead><tr>
+          <th>Reference</th><th>Client</th><th>Parts</th>
+          <th>Status</th><th>Machine</th><th>Due</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="orders-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ===== MACHINES ===== -->
+  <div id="tab-machines" class="tab-content">
+    <div class="sec-hd">
+      <h2>Machines</h2>
+      <button class="btn btn-primary" onclick="openModal('m-new-machine')">+ Add Machine</button>
+    </div>
+    <div id="machines-edit-grid" class="machine-grid"></div>
+  </div>
+
+</main>
+
+<!-- ===== MODAL: NEW MACHINE ===== -->
+<div class="overlay" id="m-new-machine">
+  <div class="modal">
+    <div class="modal-hd">
+      <h3>Add Machine</h3>
+      <button class="modal-close" onclick="closeModal('m-new-machine')">×</button>
+    </div>
+    <form onsubmit="createMachine(event)">
+      <div class="fg"><label>Machine Name *</label>
+        <input name="name" placeholder="e.g. EOS M290 — Machine 1" required></div>
+      <div class="fg"><label>Initial Status</label>
+        <select name="status">
+          <option value="idle">Idle (ready)</option>
+          <option value="printing">Printing</option>
+          <option value="maintenance">Maintenance</option>
+          <option value="offline">Offline</option>
+        </select></div>
+      <div class="fg"><label>Build Volume (mm)</label>
+        <div class="row-3">
+          <div><label style="font-size:.72rem;color:var(--gray-5);font-weight:400">X width</label>
+            <input type="number" name="bx" value="250" min="1"></div>
+          <div><label style="font-size:.72rem;color:var(--gray-5);font-weight:400">Y depth</label>
+            <input type="number" name="by" value="250" min="1"></div>
+          <div><label style="font-size:.72rem;color:var(--gray-5);font-weight:400">Z height</label>
+            <input type="number" name="bz" value="300" min="1"></div>
+        </div></div>
+      <div class="fg"><label>Notes</label>
+        <textarea name="notes" rows="2" placeholder="Optional…"></textarea></div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('m-new-machine')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Add Machine</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ===== MODAL: EDIT MACHINE ===== -->
+<div class="overlay" id="m-edit-machine">
+  <div class="modal">
+    <div class="modal-hd">
+      <h3>Edit Machine</h3>
+      <button class="modal-close" onclick="closeModal('m-edit-machine')">×</button>
+    </div>
+    <form onsubmit="saveMachine(event)">
+      <input type="hidden" id="em-id">
+      <div class="fg"><label>Machine Name *</label><input id="em-name" required></div>
+      <div class="fg"><label>Status</label>
+        <select id="em-status">
+          <option value="idle">Idle</option>
+          <option value="printing">Printing</option>
+          <option value="maintenance">Maintenance</option>
+          <option value="offline">Offline</option>
+        </select></div>
+      <div class="fg"><label>Build Volume (mm)</label>
+        <div class="row-3">
+          <div><label style="font-size:.72rem;color:var(--gray-5);font-weight:400">X</label>
+            <input type="number" id="em-bx" min="1"></div>
+          <div><label style="font-size:.72rem;color:var(--gray-5);font-weight:400">Y</label>
+            <input type="number" id="em-by" min="1"></div>
+          <div><label style="font-size:.72rem;color:var(--gray-5);font-weight:400">Z</label>
+            <input type="number" id="em-bz" min="1"></div>
+        </div></div>
+      <div class="fg"><label>Notes</label>
+        <textarea id="em-notes" rows="2"></textarea></div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('m-edit-machine')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ===== MODAL: NEW ORDER ===== -->
+<div class="overlay" id="m-new-order">
+  <div class="modal" style="max-width:660px">
+    <div class="modal-hd">
+      <h3>New Order</h3>
+      <button class="modal-close" onclick="closeModal('m-new-order')">×</button>
+    </div>
+    <form onsubmit="createOrder(event)" id="f-new-order">
+      <div class="row-2">
+        <div class="fg"><label>Client Name *</label>
+          <input name="client_name" placeholder="Client name" required></div>
+        <div class="fg"><label>Order Reference</label>
+          <input name="reference" placeholder="e.g. ORD-2024-001"></div>
+      </div>
+      <div class="row-2">
+        <div class="fg"><label>Due Date</label>
+          <input type="date" name="due_date"></div>
+        <div class="fg"><label>Notes</label>
+          <input name="notes" placeholder="Optional"></div>
+      </div>
+
+      <div class="fg">
+        <label>Parts</label>
+        <div id="parts-panel" class="parts-panel">
+          <div class="empty" style="padding:16px"><span>No parts yet — add one below.</span></div>
+        </div>
+
+        <div class="add-part-box">
+          <div class="add-part-lbl">Add a Part</div>
+          <div class="row-2" style="margin-bottom:8px">
+            <div><label style="font-size:.75rem;color:var(--gray-5);font-weight:400">Part name *</label>
+              <input id="np-name" placeholder="e.g. Bracket A"></div>
+            <div><label style="font-size:.75rem;color:var(--gray-5);font-weight:400">Quantity</label>
+              <input type="number" id="np-qty" value="1" min="1"></div>
+          </div>
+          <div style="font-size:.72rem;color:var(--gray-5);margin-bottom:6px">
+            Footprint dimensions (mm) — optional, used for batch-fit estimate
+          </div>
+          <div class="row-3" style="margin-bottom:10px">
+            <input type="number" id="np-x" placeholder="X width" min="0" step="0.1">
+            <input type="number" id="np-y" placeholder="Y depth" min="0" step="0.1">
+            <input type="number" id="np-z" placeholder="Z height" min="0" step="0.1">
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="addPart()">+ Add Part</button>
+        </div>
+      </div>
+
+      <div class="modal-foot">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('m-new-order')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Create Order</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ===== MODAL: RECOMMENDATION ===== -->
+<div class="overlay" id="m-rec">
+  <div class="modal" style="max-width:640px">
+    <div class="modal-hd">
+      <h3 id="rec-title">Machine Recommendation</h3>
+      <button class="modal-close" onclick="closeModal('m-rec')">×</button>
+    </div>
+    <div id="rec-body"></div>
+  </div>
+</div>
+
+<!-- ===== MODAL: JOB STATUS ===== -->
+<div class="overlay" id="m-job">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-hd">
+      <h3>Update Job</h3>
+      <button class="modal-close" onclick="closeModal('m-job')">×</button>
+    </div>
+    <div id="job-body"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ---------------------------------------------------------------
+// State
+// ---------------------------------------------------------------
+let machines = [];
+let orders   = [];
+let pendingParts = [];
+let currentRecOrder = null;
+
+// ---------------------------------------------------------------
+// Navigation
+// ---------------------------------------------------------------
+function nav(name, btn) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'dashboard') loadDashboard();
+  if (name === 'orders')    loadOrders();
+  if (name === 'machines')  loadMachinesTab();
+}
+
+// ---------------------------------------------------------------
+// Modals
+// ---------------------------------------------------------------
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.overlay').forEach(o => {
+  o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); });
+});
+
+// ---------------------------------------------------------------
+// API
+// ---------------------------------------------------------------
+async function api(path, method = 'GET', body = null) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(path, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+
+// ---------------------------------------------------------------
+// Toast
+// ---------------------------------------------------------------
+function toast(msg, color = '#16a34a') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.background = color;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2800);
+}
+
+// ---------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------
+function badge(status) {
+  return `<span class="badge badge-${status}">${status}</span>`;
+}
+
+// ---------------------------------------------------------------
+// Dashboard
+// ---------------------------------------------------------------
+async function loadDashboard() {
+  const [ms, dash] = await Promise.all([api('/api/machines'), api('/api/dashboard')]);
+  machines = ms;
+  renderMachineCards('dash-machines', machines, false);
+  renderQueue(dash.active_jobs);
+}
+
+function renderMachineCards(containerId, list, editable) {
+  const el = document.getElementById(containerId);
+  if (!list.length) {
+    el.innerHTML = `<div class="card empty" style="grid-column:1/-1">
+      <strong>No machines yet</strong>
+      Go to the <em>Machines</em> tab to add your LPBF printers.
+    </div>`;
+    return;
+  }
+  el.innerHTML = list.map(m => {
+    const qs = m.queued_jobs || [];
+    const queueHtml = qs.length
+      ? qs.map(j => `<div class="qi">
+          <span>${j.client_name}${j.reference ? ' — ' + j.reference : ''}</span>
+          <span>${j.estimated_hours ? j.estimated_hours + 'h' : ''}</span>
+        </div>`).join('')
+      : '<div style="color:var(--gray-3);font-size:.78rem">Queue empty</div>';
+
+    const printing = m.status === 'printing'
+      ? `<div style="font-size:.78rem;color:var(--blue);margin-bottom:8px">
+           <span class="pulse-dot"></span>Currently printing
+         </div>`
+      : '';
+
+    const editBtns = editable
+      ? `<div class="mc-actions">
+           <button class="btn btn-ghost btn-sm" onclick="openEditMachine(${m.id})">Edit</button>
+           <button class="btn btn-danger btn-sm" onclick="deleteMachine(${m.id})">Delete</button>
+         </div>`
+      : '';
+
+    return `
+    <div class="machine-card">
+      <div class="accent accent-${m.status}"></div>
+      <div class="mc-body">
+        <div class="mc-top">
+          <div class="mc-name">${m.name}</div>
+          ${badge(m.status)}
+        </div>
+        <div class="mc-meta">Build plate ${m.build_x} × ${m.build_y} × ${m.build_z} mm</div>
+        ${printing}
+        <div class="mc-stats">
+          <div class="stat">
+            <div class="stat-lbl">Queue</div>
+            <div class="stat-val">${m.queue_hours ? m.queue_hours + 'h' : '—'}</div>
+          </div>
+          <div class="stat">
+            <div class="stat-lbl">30-day use</div>
+            <div class="stat-val">${m.utilization_hours ? m.utilization_hours + 'h' : '—'}</div>
+          </div>
+        </div>
+        <div class="mc-queue">
+          <div class="mc-queue-lbl">Queue (${qs.length} job${qs.length !== 1 ? 's' : ''})</div>
+          ${queueHtml}
+        </div>
+      </div>
+      ${editBtns}
+    </div>`;
+  }).join('');
+}
+
+function renderQueue(jobs) {
+  const el = document.getElementById('dash-queue');
+  if (!jobs.length) {
+    el.innerHTML = `<div class="card empty">No active jobs at the moment.</div>`;
+    return;
+  }
+  el.innerHTML = `<div class="card" style="overflow:hidden">
+    <table class="tbl">
+      <thead><tr>
+        <th>Client / Reference</th><th>Machine</th>
+        <th>Status</th><th>Est. Hours</th><th>Actions</th>
+      </tr></thead>
+      <tbody>${jobs.map(j => `
+        <tr>
+          <td><strong>${j.client_name}</strong>${j.reference ? ' <span style="color:var(--gray-5)">— ' + j.reference + '</span>' : ''}</td>
+          <td>${j.machine_name}</td>
+          <td>${badge(j.status)}</td>
+          <td>${j.estimated_hours ? j.estimated_hours + 'h' : '—'}</td>
+          <td><button class="btn btn-ghost btn-sm" onclick="openJobModal(${j.id},'${j.status}')">Update</button></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+// ---------------------------------------------------------------
+// Orders
+// ---------------------------------------------------------------
+async function loadOrders() {
+  orders = await api('/api/orders');
+  const tbody = document.getElementById('orders-body');
+  if (!orders.length) {
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty"><strong>No orders yet</strong>Create your first order with the button above.</div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = orders.map(o => {
+    const qty  = (o.parts || []).reduce((s, p) => s + (p.quantity || 1), 0);
+    const pcs  = o.parts ? o.parts.length : 0;
+    const mach = o.job ? o.job.machine_name : '—';
+    const due  = o.due_date || '—';
+    const ref  = o.reference || '#' + o.id;
+    const canAssign   = o.status === 'pending';
+    const canUpdate   = o.job && ['queued','printing'].includes(o.job.status);
+    return `
+    <tr>
+      <td><strong>${ref}</strong></td>
+      <td>${o.client_name}</td>
+      <td>${pcs} parts, ${qty} pcs</td>
+      <td>${badge(o.status)}</td>
+      <td>${mach}</td>
+      <td>${due}</td>
+      <td style="display:flex;gap:4px;flex-wrap:wrap">
+        ${canAssign ? `<button class="btn btn-primary btn-sm" onclick="getRecommendation(${o.id})">Assign →</button>` : ''}
+        ${canUpdate ? `<button class="btn btn-ghost btn-sm" onclick="openJobModal(${o.job.id},'${o.job.status}')">Status</button>` : ''}
+        <button class="btn btn-ghost btn-sm" onclick="deleteOrder(${o.id})">Delete</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function deleteOrder(id) {
+  if (!confirm('Delete this order? This cannot be undone.')) return;
+  await api('/api/orders/' + id, 'DELETE');
+  loadOrders();
+  toast('Order deleted');
+}
+
+// ---------------------------------------------------------------
+// Parts (new order form)
+// ---------------------------------------------------------------
+function addPart() {
+  const name = document.getElementById('np-name').value.trim();
+  if (!name) { alert('Part name is required.'); return; }
+  pendingParts.push({
+    name,
+    quantity: parseInt(document.getElementById('np-qty').value) || 1,
+    size_x: parseFloat(document.getElementById('np-x').value) || null,
+    size_y: parseFloat(document.getElementById('np-y').value) || null,
+    size_z: parseFloat(document.getElementById('np-z').value) || null,
+  });
+  ['np-name','np-x','np-y','np-z'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('np-qty').value = '1';
+  renderPendingParts();
+}
+
+function removePart(i) { pendingParts.splice(i, 1); renderPendingParts(); }
+
+function renderPendingParts() {
+  const el = document.getElementById('parts-panel');
+  if (!pendingParts.length) {
+    el.innerHTML = `<div class="empty" style="padding:16px"><span>No parts yet — add one below.</span></div>`;
+    return;
+  }
+  el.innerHTML = pendingParts.map((p, i) => {
+    const dims = [p.size_x, p.size_y, p.size_z].filter(Boolean).join(' × ');
+    return `<div class="part-row">
+      <span><strong>${p.name}</strong> × ${p.quantity}
+        ${dims ? `<span style="color:var(--gray-5);font-size:.78rem"> — ${dims} mm</span>` : ''}
+      </span>
+      <button class="btn btn-ghost btn-sm" onclick="removePart(${i})">Remove</button>
+    </div>`;
+  }).join('');
+}
+
+async function createOrder(e) {
+  e.preventDefault();
+  if (!pendingParts.length) { alert('Please add at least one part.'); return; }
+  const f = e.target;
+  const result = await api('/api/orders', 'POST', {
+    client_name: f.client_name.value,
+    reference:   f.reference.value,
+    due_date:    f.due_date.value,
+    notes:       f.notes.value,
+    parts:       pendingParts,
+  });
+  pendingParts = [];
+  renderPendingParts();
+  f.reset();
+  closeModal('m-new-order');
+  toast('Order created!');
+  // Refresh orders list then offer recommendation
+  orders = await api('/api/orders');
+  if (confirm('Order saved! Find the best machine for it now?')) {
+    getRecommendation(result.id);
+  }
+}
+
+// ---------------------------------------------------------------
+// Machines tab
+// ---------------------------------------------------------------
+async function loadMachinesTab() {
+  machines = await api('/api/machines');
+  renderMachineCards('machines-edit-grid', machines, true);
+}
+
+async function createMachine(e) {
+  e.preventDefault();
+  const f = e.target;
+  await api('/api/machines', 'POST', {
+    name:   f.name.value,
+    status: f.status.value,
+    build_x: parseFloat(f.bx.value) || 250,
+    build_y: parseFloat(f.by.value) || 250,
+    build_z: parseFloat(f.bz.value) || 300,
+    notes:  f.notes.value,
+  });
+  f.reset();
+  closeModal('m-new-machine');
+  toast('Machine added!');
+  loadMachinesTab();
+  loadDashboard();
+}
+
+function openEditMachine(id) {
+  const m = machines.find(x => x.id === id);
+  if (!m) return;
+  document.getElementById('em-id').value    = m.id;
+  document.getElementById('em-name').value  = m.name;
+  document.getElementById('em-status').value = m.status;
+  document.getElementById('em-bx').value    = m.build_x;
+  document.getElementById('em-by').value    = m.build_y;
+  document.getElementById('em-bz').value    = m.build_z;
+  document.getElementById('em-notes').value = m.notes || '';
+  openModal('m-edit-machine');
+}
+
+async function saveMachine(e) {
+  e.preventDefault();
+  const id = document.getElementById('em-id').value;
+  await api('/api/machines/' + id, 'PUT', {
+    name:    document.getElementById('em-name').value,
+    status:  document.getElementById('em-status').value,
+    build_x: parseFloat(document.getElementById('em-bx').value),
+    build_y: parseFloat(document.getElementById('em-by').value),
+    build_z: parseFloat(document.getElementById('em-bz').value),
+    notes:   document.getElementById('em-notes').value,
+  });
+  closeModal('m-edit-machine');
+  toast('Machine updated!');
+  loadMachinesTab();
+  loadDashboard();
+}
+
+async function deleteMachine(id) {
+  if (!confirm('Delete this machine? Active jobs will be orphaned.')) return;
+  await api('/api/machines/' + id, 'DELETE');
+  toast('Machine deleted', '#dc2626');
+  loadMachinesTab();
+  loadDashboard();
+}
+
+// ---------------------------------------------------------------
+// Recommendation
+// ---------------------------------------------------------------
+async function getRecommendation(orderId) {
+  currentRecOrder = orderId;
+  const order = orders.find(o => o.id === orderId) || await api('/api/orders/' + orderId);
+  document.getElementById('rec-title').textContent =
+    `Best Machine — ${order.reference || 'Order #' + orderId} (${order.client_name})`;
+  document.getElementById('rec-body').innerHTML =
+    `<div style="text-align:center;padding:30px"><span class="spin"></span></div>`;
+  openModal('m-rec');
+  const recs = await api('/api/recommend/' + orderId);
+  renderRecs(recs, orderId, order);
+}
+
+function renderRecs(recs, orderId, order) {
+  const available   = recs.filter(r => r.available);
+  const unavailable = recs.filter(r => !r.available);
+
+  let html = `<div class="alert alert-info">
+    Ranked by: queue time · load balance · batch opportunity.
+    Lower score = faster turnaround for your client.
+  </div>`;
+
+  if (!available.length)
+    html += `<div class="alert alert-warn">All machines are currently in maintenance or offline.</div>`;
+
+  available.forEach((r, i) => {
+    const best = i === 0;
+    const batchTag = r.batch_opportunity
+      ? `<span style="background:#fef3c7;color:#92400e;padding:2px 9px;border-radius:99px;font-size:.72rem;font-weight:700">Batch opportunity</span>`
+      : '';
+    html += `
+    <div class="rec-card ${best ? 'best' : ''}">
+      <div class="rec-top">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          ${best ? '<span style="background:var(--blue);color:#fff;padding:2px 9px;border-radius:99px;font-size:.72rem;font-weight:700">BEST MATCH</span>' : ''}
+          <strong>${r.machine.name}</strong>
+          ${badge(r.machine.status)}
+          ${batchTag}
+        </div>
+      </div>
+      <ul class="rec-reasons">${r.reasons.map(x => `<li>${x}</li>`).join('')}</ul>
+      <div class="rec-bot">
+        <span class="rec-nums">
+          Queue: <strong>${r.queue_hours}h</strong> &nbsp;·&nbsp;
+          30-day use: <strong>${r.utilization_hours}h</strong>
+        </span>
+        <button class="btn btn-primary btn-sm"
+          onclick="showAssignForm(${r.machine.id},'${r.machine.name.replace(/'/g,"\\'")}',${orderId})">
+          Assign to this machine →
+        </button>
+      </div>
+    </div>`;
+  });
+
+  unavailable.forEach(r => {
+    html += `
+    <div class="rec-card unavail">
+      <div class="rec-top"><strong>${r.machine.name}</strong>${badge(r.machine.status)}</div>
+      <div style="font-size:.8rem;color:var(--gray-5)">${r.warnings.join(', ')}</div>
+    </div>`;
+  });
+
+  document.getElementById('rec-body').innerHTML = html;
+}
+
+function showAssignForm(machineId, machineName, orderId) {
+  document.getElementById('rec-body').innerHTML = `
+    <div class="alert alert-ok">Assigning to <strong>${machineName}</strong></div>
+    <div class="fg">
+      <label>Estimated Build Time (hours) *</label>
+      <input type="number" id="assign-h" placeholder="e.g. 24" min="0" step="0.5">
+      <div class="fg-sub">
+        In LPBF the build time is set by the tallest part (Z height). Enter your best estimate —
+        it's used to calculate queue wait times for future orders.
+      </div>
+    </div>
+    <div class="fg"><label>Notes</label>
+      <textarea id="assign-n" rows="2" placeholder="Optional…"></textarea>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="getRecommendation(${orderId})">← Back</button>
+      <button class="btn btn-primary" onclick="doAssign(${machineId},${orderId})">Confirm Assignment</button>
+    </div>`;
+}
+
+async function doAssign(machineId, orderId) {
+  const h = parseFloat(document.getElementById('assign-h').value);
+  if (!h || h <= 0) { alert('Please enter a build time estimate (hours).'); return; }
+  await api('/api/assign', 'POST', {
+    machine_id:       machineId,
+    order_id:         orderId,
+    estimated_hours:  h,
+    notes: document.getElementById('assign-n').value,
+  });
+  closeModal('m-rec');
+  toast('Order assigned!');
+  loadDashboard();
+  loadOrders();
+}
+
+// ---------------------------------------------------------------
+// Job status
+// ---------------------------------------------------------------
+function openJobModal(jobId, currentStatus) {
+  const transitions = {
+    queued:   ['printing', 'cancelled'],
+    printing: ['completed', 'queued', 'cancelled'],
+  };
+  const opts = transitions[currentStatus] || [];
+  const labels = { printing:'Mark as Printing', completed:'Mark as Completed', queued:'Move back to Queued', cancelled:'Cancel Job' };
+  const colours = { printing:'btn-primary', completed:'btn-green', queued:'btn-ghost', cancelled:'btn-danger' };
+
+  document.getElementById('job-body').innerHTML = `
+    <p style="margin-bottom:14px">Current status: ${badge(currentStatus)}</p>
+    ${opts.length
+      ? `<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px">
+           ${opts.map(s => `<button class="btn ${colours[s]}" onclick="setJobStatus(${jobId},'${s}')">${labels[s]}</button>`).join('')}
+         </div>`
+      : `<p style="color:var(--gray-5)">No further transitions available.</p>`}
+    <div style="text-align:right">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('m-job')">Close</button>
+    </div>`;
+  openModal('m-job');
+}
+
+async function setJobStatus(jobId, status) {
+  await api('/api/jobs/' + jobId, 'PUT', { status });
+  closeModal('m-job');
+  toast('Status updated to: ' + status);
+  loadDashboard();
+  if (document.getElementById('tab-orders').classList.contains('active')) loadOrders();
+}
+
+// ---------------------------------------------------------------
+// Boot
+// ---------------------------------------------------------------
+loadDashboard();
+</script>
+</body>
+</html>
