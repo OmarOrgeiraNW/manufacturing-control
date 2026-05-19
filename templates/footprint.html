@@ -21,7 +21,6 @@
   --gray-9:  #111827;
   --r:       8px;
   --sh:      0 1px 3px rgba(0,0,0,.10), 0 1px 2px rgba(0,0,0,.06);
-  --sh-lg:   0 10px 25px -5px rgba(0,0,0,.15);
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -83,7 +82,7 @@ main {
 .drop-zone {
   border: 2px dashed var(--gray-3);
   border-radius: var(--r);
-  padding: 28px 16px;
+  padding: 24px 16px;
   text-align: center;
   cursor: pointer;
   transition: border-color .15s, background .15s;
@@ -96,18 +95,45 @@ main {
 .drop-zone input[type=file] {
   position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
 }
-.drop-icon { font-size: 2rem; margin-bottom: 8px; }
-.drop-text { font-size: .875rem; font-weight: 600; color: var(--gray-7); margin-bottom: 4px; }
+.drop-icon { font-size: 1.8rem; margin-bottom: 6px; }
+.drop-text { font-size: .875rem; font-weight: 600; color: var(--gray-7); margin-bottom: 3px; }
 .drop-sub  { font-size: .75rem; color: var(--gray-5); }
 
-.file-chip {
+/* ---- File list ---- */
+.file-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.file-entry {
   display: flex; align-items: center; gap: 8px;
   background: var(--gray-0); border: 1px solid var(--gray-2);
-  border-radius: var(--r); padding: 8px 12px;
-  font-size: .82rem; margin-top: 10px;
+  border-radius: var(--r); padding: 7px 10px;
 }
-.file-chip-name { font-weight: 600; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.file-chip-size { color: var(--gray-5); flex-shrink: 0; }
+.file-entry-dot {
+  width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+}
+.file-entry-info { flex: 1; min-width: 0; }
+.file-entry-name {
+  font-weight: 600; font-size: .82rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;
+}
+.file-entry-size { font-size: .7rem; color: var(--gray-5); }
+.file-entry-qty { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.file-entry-qty span { font-size: .72rem; color: var(--gray-5); }
+.file-entry-qty input {
+  width: 50px; padding: 3px 6px;
+  border: 1px solid var(--gray-3); border-radius: 4px;
+  font-size: .82rem; text-align: center; font-family: inherit;
+}
+.file-entry-qty input:focus {
+  outline: none; border-color: var(--blue);
+  box-shadow: 0 0 0 2px rgba(37,99,235,.12);
+}
+.file-entry-remove {
+  border: none; background: none; cursor: pointer;
+  color: var(--gray-5); font-size: .9rem;
+  padding: 2px 4px; border-radius: 4px; flex-shrink: 0;
+  transition: color .1s, background .1s;
+  line-height: 1;
+}
+.file-entry-remove:hover { color: var(--red); background: #fef2f2; }
 
 /* ---- Form fields ---- */
 .fg { margin-bottom: 12px; }
@@ -115,13 +141,13 @@ main {
   display: block; font-size: .78rem; font-weight: 600;
   color: var(--gray-7); margin-bottom: 4px;
 }
-.fg input, .fg select {
+.fg input {
   width: 100%; padding: 7px 10px;
   border: 1px solid var(--gray-3); border-radius: var(--r);
   font-size: .875rem; font-family: inherit; background: #fff;
   transition: border-color .15s, box-shadow .15s;
 }
-.fg input:focus, .fg select:focus {
+.fg input:focus {
   outline: none; border-color: var(--blue);
   box-shadow: 0 0 0 3px rgba(37,99,235,.12);
 }
@@ -183,7 +209,7 @@ main {
 /* ---- Stats grid ---- */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 12px;
 }
 .stat-card {
@@ -192,8 +218,12 @@ main {
   box-shadow: var(--sh);
 }
 .stat-lbl { font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; color: var(--gray-5); margin-bottom: 4px; }
-.stat-val { font-size: 1.3rem; font-weight: 700; color: var(--gray-9); line-height: 1.1; }
+.stat-val { font-size: 1.25rem; font-weight: 700; color: var(--gray-9); line-height: 1.1; }
 .stat-unit { font-size: .72rem; color: var(--gray-5); margin-top: 2px; }
+.stat-card.fit-yes { border-color: #bbf7d0; background: #f0fdf4; }
+.stat-card.fit-no  { border-color: #fecaca; background: #fef2f2; }
+.stat-val.fit-yes  { color: #15803d; }
+.stat-val.fit-no   { color: #dc2626; }
 
 /* ---- Assessment banner ---- */
 .assessment {
@@ -209,6 +239,31 @@ main {
 .assessment-text { flex: 1; }
 .assessment-level { font-weight: 700; font-size: .9rem; text-transform: capitalize; }
 .assessment-msg   { font-size: .82rem; margin-top: 2px; }
+
+/* ---- Parts breakdown table ---- */
+.parts-table-wrap {
+  background: #fff; border: 1px solid var(--gray-2);
+  border-radius: var(--r); box-shadow: var(--sh); padding: 18px;
+  overflow-x: auto;
+}
+.parts-table-wrap h3 { font-size: .9rem; font-weight: 600; margin-bottom: 14px; }
+.parts-table {
+  width: 100%; border-collapse: collapse; font-size: .82rem;
+}
+.parts-table th {
+  text-align: left; padding: 6px 10px;
+  font-size: .68rem; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--gray-5); border-bottom: 2px solid var(--gray-2);
+}
+.parts-table td {
+  padding: 8px 10px; border-bottom: 1px solid var(--gray-1);
+  vertical-align: middle;
+}
+.parts-table tr:last-child td { border-bottom: none; }
+.part-color-dot {
+  display: inline-block; width: 10px; height: 10px;
+  border-radius: 50%; margin-right: 6px; vertical-align: middle;
+}
 
 /* ---- Packing detail ---- */
 .pack-detail {
@@ -299,49 +354,31 @@ main {
 
     <!-- Upload -->
     <div class="card">
-      <div class="card-title">1 — Upload Part File</div>
+      <div class="card-title">1 — Upload Parts</div>
       <div class="drop-zone" id="drop-zone">
-        <input type="file" id="file-input" accept=".stl,.step,.stp">
+        <input type="file" id="file-input" accept=".stl,.step,.stp" multiple>
         <div class="drop-icon">📐</div>
-        <div class="drop-text">Drop your file here</div>
-        <div class="drop-sub">or click to browse</div>
-        <div class="drop-sub" style="margin-top:6px">STL · STEP · STP</div>
+        <div class="drop-text">Drop files here</div>
+        <div class="drop-sub">or click to browse · STL · STEP · STP</div>
+        <div class="drop-sub" style="margin-top:4px;font-size:.7rem;color:var(--gray-5)">Multiple files supported</div>
       </div>
-      <div id="file-chip" style="display:none" class="file-chip">
-        <span id="chip-name" class="file-chip-name"></span>
-        <span id="chip-size" class="file-chip-size"></span>
-      </div>
+      <div id="file-list" class="file-list"></div>
     </div>
 
     <!-- Bed settings -->
     <div class="card">
       <div class="card-title">2 — Bed Configuration</div>
-
-      <div class="fg">
-        <label>Preset machine</label>
-        <select id="machine-preset" onchange="applyPreset()">
-          <option value="">— Custom —</option>
-          <option value="250,250">EOS M290 (250 × 250 mm)</option>
-          <option value="500,280">EOS M400 (500 × 280 mm)</option>
-          <option value="400,400">SLM 500 (400 × 400 mm)</option>
-          <option value="300,300">Renishaw RenAM 500 (300 × 300 mm)</option>
-          <option value="248,248">Trumpf TruPrint 3000 (248 × 248 mm)</option>
-          <option value="200,200">Concept Laser M2 (200 × 200 mm)</option>
-        </select>
-      </div>
-
       <div class="row-2">
         <div class="fg">
           <label>Bed X (mm)</label>
-          <input type="number" id="bed-x" value="250" min="1" step="1">
+          <input type="number" id="bed-x" value="200" min="1" step="1">
         </div>
         <div class="fg">
           <label>Bed Y (mm)</label>
-          <input type="number" id="bed-y" value="250" min="1" step="1">
+          <input type="number" id="bed-y" value="200" min="1" step="1">
         </div>
       </div>
-
-      <div class="fg">
+      <div class="fg" style="margin-bottom:0">
         <label>Part spacing / gap (mm)</label>
         <input type="number" id="gap" value="2" min="0" step="0.5">
         <div class="fg-hint">Minimum clearance between adjacent parts.</div>
@@ -360,10 +397,14 @@ main {
     <div class="card" style="font-size:.78rem;color:var(--gray-5);line-height:1.6">
       <div class="card-title">How it works</div>
       <p style="margin-bottom:8px">
-        Upload a part already oriented for printing — the
-        <strong>build direction is Z</strong> (vertical). The tool computes
-        the true orthographic silhouette of the whole 3D body looking down
-        the −Z axis, exactly what occupies the build plate.
+        Upload one or more parts already oriented for printing — the
+        <strong>build direction is Z</strong> (vertical). Set the quantity
+        for each part, then click Analyse.
+      </p>
+      <p style="margin-bottom:8px">
+        The tool projects each part's 3D body onto the XY build plate,
+        packs all requested copies using a shelf algorithm, and assesses
+        whether they all fit.
       </p>
       <p style="margin-bottom:8px">
         <strong>STL</strong> — exact silhouette via trimesh (handles
@@ -386,27 +427,23 @@ main {
       <span>Analysing geometry…</span>
     </div>
 
-    <!-- Bed visualisation — always visible, one single ID -->
+    <!-- Bed visualisation -->
     <div class="bed-wrap">
       <div class="bed-header">
         <h2>Bed Visualisation</h2>
         <div class="view-toggle" id="view-toggle" style="display:none">
           <button class="view-btn active" id="vbtn-single" onclick="setView('single',this)">Single part</button>
-          <button class="view-btn"        id="vbtn-pack"   onclick="setView('pack',this)">Grid pack</button>
+          <button class="view-btn"        id="vbtn-pack"   onclick="setView('pack',this)">Pack layout</button>
         </div>
       </div>
       <div id="bed-svg-container" style="min-height:360px">
         <div class="bed-empty">
           <div class="bed-empty-icon">🖨️</div>
           <div class="bed-empty-text">No file analysed yet</div>
-          <div class="bed-empty-sub">Upload a part file and click Analyse Footprint</div>
+          <div class="bed-empty-sub">Upload part files and click Analyse Footprint</div>
         </div>
       </div>
       <div class="legend" id="bed-legend" style="display:none">
-        <div class="legend-item">
-          <div class="legend-swatch" style="background:#3b82f6;border:1px solid #1d4ed8"></div>
-          <span>Part footprint (bounding box)</span>
-        </div>
         <div class="legend-item" id="legend-hull" style="display:none">
           <div class="legend-swatch" style="background:rgba(99,102,241,.35);border:1px solid #6366f1"></div>
           <span>True footprint projection</span>
@@ -431,73 +468,46 @@ main {
       </div>
 
       <!-- Stats grid -->
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-lbl">Footprint</div>
-          <div class="stat-val" id="s-footprint">—</div>
-          <div class="stat-unit" id="s-footprint-unit">W × D mm</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-lbl">Part Height</div>
-          <div class="stat-val" id="s-height">—</div>
-          <div class="stat-unit" id="s-height-unit">mm (build axis)</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-lbl">Projected Footprint Area</div>
-          <div class="stat-val" id="s-hull-area">—</div>
-          <div class="stat-unit">mm²</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-lbl">Bounding Box Area</div>
-          <div class="stat-val" id="s-bbox-area">—</div>
-          <div class="stat-unit">mm²</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-lbl">Bed Usage (1 part)</div>
-          <div class="stat-val" id="s-usage-pct">—</div>
-          <div class="stat-unit">% of bed area</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-lbl">Max Copies (grid)</div>
-          <div class="stat-val" id="s-copies">—</div>
-          <div class="stat-unit" id="s-copies-grid">parts on bed</div>
-        </div>
+      <div class="stats-grid" id="stats-grid">
+        <!-- Populated by JS -->
       </div>
 
       <!-- Fill bar -->
       <div style="background:#fff;border:1px solid var(--gray-2);border-radius:var(--r);padding:16px;box-shadow:var(--sh)">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-          <span style="font-size:.82rem;font-weight:600;color:var(--gray-7)">Grid pack fill rate</span>
+          <span style="font-size:.82rem;font-weight:600;color:var(--gray-7)">Packing fill rate</span>
           <span style="font-size:.82rem;font-weight:700" id="fill-pct-label">—</span>
         </div>
         <div class="fill-bar-wrap">
           <div class="fill-bar green" id="fill-bar" style="width:0%"></div>
         </div>
         <div style="font-size:.72rem;color:var(--gray-5);margin-top:4px">
-          Actual fill using rectangular grid packing with <span id="fill-gap-label">—</span> mm gap.
-          Convex-hull fill rate for a single part shown in stats above.
+          Bounding-box fill using shelf packing with <span id="fill-gap-label">—</span> mm gap.
         </div>
       </div>
 
-      <!-- Packing detail -->
+      <!-- Parts breakdown table -->
+      <div class="parts-table-wrap" id="parts-table-wrap">
+        <h3>Part Breakdown</h3>
+        <table class="parts-table">
+          <thead>
+            <tr>
+              <th>Part</th>
+              <th>File</th>
+              <th>Bbox (X × Y)</th>
+              <th>Height (Z)</th>
+              <th>Footprint Area</th>
+              <th>Qty</th>
+              <th>Total Area</th>
+            </tr>
+          </thead>
+          <tbody id="parts-tbody"></tbody>
+        </table>
+      </div>
+
+      <!-- Packing details -->
       <div class="pack-detail">
         <h3>Packing Details</h3>
-        <div class="pack-row">
-          <span class="pack-row-lbl">File name</span>
-          <span class="pack-row-val" id="d-filename">—</span>
-        </div>
-        <div class="pack-row">
-          <span class="pack-row-lbl">Bounding box footprint</span>
-          <span class="pack-row-val" id="d-bbox">—</span>
-        </div>
-        <div class="pack-row">
-          <span class="pack-row-lbl">Build height (Z)</span>
-          <span class="pack-row-val" id="d-height">—</span>
-        </div>
-        <div class="pack-row">
-          <span class="pack-row-lbl">Projected footprint area</span>
-          <span class="pack-row-val" id="d-hull">—</span>
-        </div>
         <div class="pack-row">
           <span class="pack-row-lbl">Bed dimensions</span>
           <span class="pack-row-val" id="d-bed">—</span>
@@ -507,18 +517,20 @@ main {
           <span class="pack-row-val" id="d-gap">—</span>
         </div>
         <div class="pack-row">
-          <span class="pack-row-lbl">Grid columns × rows</span>
-          <span class="pack-row-val" id="d-grid">—</span>
+          <span class="pack-row-lbl">Total parts requested</span>
+          <span class="pack-row-val" id="d-total-needed">—</span>
         </div>
         <div class="pack-row">
-          <span class="pack-row-lbl">Total parts in grid pack</span>
-          <span class="pack-row-val" id="d-total">—</span>
+          <span class="pack-row-lbl">Parts placed</span>
+          <span class="pack-row-val" id="d-placed">—</span>
         </div>
         <div class="pack-row">
-          <span class="pack-row-lbl">Grid pack fill rate</span>
+          <span class="pack-row-lbl">Packing fill rate</span>
           <span class="pack-row-val" id="d-fill">—</span>
         </div>
-        <div class="source-note" id="d-source-note">—</div>
+        <div class="pack-row" id="d-source-row" style="display:block;padding-top:10px">
+          <div class="source-note" id="d-source-note"></div>
+        </div>
       </div>
 
     </div><!-- /results-content -->
@@ -528,9 +540,14 @@ main {
 
 <script>
 // ================================================================
+// Constants
+// ================================================================
+const PART_COLORS = ['#2563eb','#16a34a','#d97706','#dc2626','#6366f1','#0891b2','#7c3aed','#be185d'];
+
+// ================================================================
 // State
 // ================================================================
-let currentFile  = null;
+let fileList     = [];   // [{file, qty}]
 let currentResult = null;
 let currentView  = 'single';
 
@@ -545,37 +562,58 @@ dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover
 dropZone.addEventListener('drop', e => {
   e.preventDefault();
   dropZone.classList.remove('dragover');
-  const f = e.dataTransfer.files[0];
-  if (f) setFile(f);
+  addFiles(e.dataTransfer.files);
 });
 fileInput.addEventListener('change', () => {
-  if (fileInput.files[0]) setFile(fileInput.files[0]);
+  addFiles(fileInput.files);
+  fileInput.value = '';  // allow re-selecting the same file
 });
 
-function setFile(f) {
-  currentFile = f;
-  document.getElementById('chip-name').textContent = f.name;
-  document.getElementById('chip-size').textContent = fmtBytes(f.size);
-  document.getElementById('file-chip').style.display = 'flex';
+function addFiles(files) {
+  for (const f of files) {
+    const ext = f.name.split('.').pop().toLowerCase();
+    if (!['stl','step','stp'].includes(ext)) continue;
+    fileList.push({ file: f, qty: 1 });
+  }
+  renderFileList();
+}
+
+function removeFile(idx) {
+  fileList.splice(idx, 1);
+  renderFileList();
+}
+
+function renderFileList() {
+  const el = document.getElementById('file-list');
+  if (fileList.length === 0) {
+    el.innerHTML = '';
+    document.getElementById('analyze-btn').disabled = true;
+    return;
+  }
+  el.innerHTML = fileList.map((entry, i) => {
+    const color = PART_COLORS[i % PART_COLORS.length];
+    return `
+    <div class="file-entry" id="fe-${i}">
+      <div class="file-entry-dot" style="background:${color}"></div>
+      <div class="file-entry-info">
+        <span class="file-entry-name" title="${entry.file.name}">${entry.file.name}</span>
+        <span class="file-entry-size">${fmtBytes(entry.file.size)}</span>
+      </div>
+      <div class="file-entry-qty">
+        <span>Qty:</span>
+        <input type="number" value="${entry.qty}" min="1" step="1"
+          onchange="fileList[${i}].qty = Math.max(1, parseInt(this.value)||1); this.value = fileList[${i}].qty">
+      </div>
+      <button class="file-entry-remove" onclick="removeFile(${i})" title="Remove">✕</button>
+    </div>`;
+  }).join('');
   document.getElementById('analyze-btn').disabled = false;
-  clearError();
 }
 
 function fmtBytes(b) {
   if (b < 1024) return b + ' B';
   if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
   return (b / (1024 * 1024)).toFixed(1) + ' MB';
-}
-
-// ================================================================
-// Preset
-// ================================================================
-function applyPreset() {
-  const val = document.getElementById('machine-preset').value;
-  if (!val) return;
-  const [x, y] = val.split(',');
-  document.getElementById('bed-x').value = x;
-  document.getElementById('bed-y').value = y;
 }
 
 // ================================================================
@@ -594,23 +632,25 @@ function clearError() {
 // Analysis
 // ================================================================
 async function runAnalysis() {
-  if (!currentFile) return;
+  if (fileList.length === 0) return;
   clearError();
 
-  const bedX = parseFloat(document.getElementById('bed-x').value) || 250;
-  const bedY = parseFloat(document.getElementById('bed-y').value) || 250;
+  const bedX = parseFloat(document.getElementById('bed-x').value) || 200;
+  const bedY = parseFloat(document.getElementById('bed-y').value) || 200;
   const gap  = parseFloat(document.getElementById('gap').value)   || 2;
 
-  // Show loading
   document.getElementById('loading').classList.add('show');
   document.getElementById('results-content').style.display = 'none';
   document.getElementById('analyze-btn').disabled = true;
 
   const fd = new FormData();
-  fd.append('file',  currentFile);
   fd.append('bed_x', bedX);
   fd.append('bed_y', bedY);
   fd.append('gap',   gap);
+  fileList.forEach((entry, i) => {
+    fd.append(`file_${i}`, entry.file);
+    fd.append(`qty_${i}`,  entry.qty);
+  });
 
   try {
     const res  = await fetch('/api/analyze', { method: 'POST', body: fd });
@@ -630,9 +670,10 @@ async function runAnalysis() {
 // Render results
 // ================================================================
 function renderResults(d) {
-  const geo  = d.geometry;
-  const pack = d.packing;
-  const ass  = d.assessment;
+  const parts = d.parts;
+  const pack  = d.packing;
+  const ass   = d.assessment;
+  const isSingle = parts.length === 1;
 
   // Assessment banner
   const icons = { green:'✅', blue:'ℹ️', amber:'⚠️', red:'🔴' };
@@ -641,16 +682,77 @@ function renderResults(d) {
   document.getElementById('assess-level').textContent = ass.level.charAt(0).toUpperCase() + ass.level.slice(1);
   document.getElementById('assess-msg').textContent   = ass.message;
 
-  // Stats
-  document.getElementById('s-footprint').textContent       = `${fmt(geo.bbox_x)} × ${fmt(geo.bbox_y)}`;
-  document.getElementById('s-footprint-unit').textContent  = 'X × Y mm';
-  document.getElementById('s-height').textContent          = fmt(geo.height_z);
-  document.getElementById('s-height-unit').textContent     = 'mm (Z axis)';
-  document.getElementById('s-hull-area').textContent       = fmt(geo.footprint_area);
-  document.getElementById('s-bbox-area').textContent       = fmt(geo.bbox_area);
-  document.getElementById('s-usage-pct').textContent       = ass.single_part_pct + '%';
-  document.getElementById('s-copies').textContent          = pack.total;
-  document.getElementById('s-copies-grid').textContent     = `${pack.nx} × ${pack.ny} grid`;
+  // Stats grid
+  const totalNeeded = pack.total_needed;
+  const placed      = pack.placed_count;
+  const allFit      = pack.all_fit;
+  const fitClass    = allFit ? 'fit-yes' : 'fit-no';
+  const fitValClass = allFit ? 'fit-yes' : 'fit-no';
+
+  const maxH = parts.reduce((m, p) => Math.max(m, p.geometry.height_z), 0);
+  const totalFpArea = parts.reduce((s, p) => s + p.geometry.footprint_area * p.qty, 0);
+  const bedArea = d.bed.x * d.bed.y;
+
+  let statsHtml = '';
+  if (isSingle) {
+    const geo = parts[0].geometry;
+    statsHtml = `
+      <div class="stat-card">
+        <div class="stat-lbl">Footprint (bbox)</div>
+        <div class="stat-val">${fmt(geo.bbox_x)} × ${fmt(geo.bbox_y)}</div>
+        <div class="stat-unit">X × Y mm</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-lbl">Part Height</div>
+        <div class="stat-val">${fmt(geo.height_z)}</div>
+        <div class="stat-unit">mm (Z axis)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-lbl">Projected Area</div>
+        <div class="stat-val">${fmt(geo.footprint_area)}</div>
+        <div class="stat-unit">mm²</div>
+      </div>`;
+  } else {
+    statsHtml = `
+      <div class="stat-card">
+        <div class="stat-lbl">Distinct Parts</div>
+        <div class="stat-val">${parts.length}</div>
+        <div class="stat-unit">file types</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-lbl">Tallest Part</div>
+        <div class="stat-val">${fmt(maxH)}</div>
+        <div class="stat-unit">mm (Z axis)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-lbl">Total Footprint Area</div>
+        <div class="stat-val">${fmt(totalFpArea)}</div>
+        <div class="stat-unit">mm² (all copies)</div>
+      </div>`;
+  }
+
+  statsHtml += `
+    <div class="stat-card ${fitClass}">
+      <div class="stat-lbl">Parts Fit</div>
+      <div class="stat-val ${fitValClass}">${placed} / ${totalNeeded}</div>
+      <div class="stat-unit">${allFit ? 'all fit ✓' : 'overflow ✗'}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-lbl">Bed Fill</div>
+      <div class="stat-val">${pack.fill_pct}%</div>
+      <div class="stat-unit">of ${d.bed.x} × ${d.bed.y} mm</div>
+    </div>`;
+
+  if (isSingle) {
+    statsHtml += `
+    <div class="stat-card">
+      <div class="stat-lbl">Max Copies (grid)</div>
+      <div class="stat-val">${placed}</div>
+      <div class="stat-unit">at qty ${parts[0].qty}</div>
+    </div>`;
+  }
+
+  document.getElementById('stats-grid').innerHTML = statsHtml;
 
   // Fill bar
   const pct = Math.min(pack.fill_pct, 100);
@@ -659,33 +761,52 @@ function renderResults(d) {
   document.getElementById('fill-pct-label').textContent = pack.fill_pct + '%';
   document.getElementById('fill-gap-label').textContent = d.gap;
 
-  // Detail rows
-  document.getElementById('d-filename').textContent   = d.filename;
-  document.getElementById('d-bbox').textContent       = `${fmt(geo.bbox_x)} × ${fmt(geo.bbox_y)} mm`;
-  document.getElementById('d-height').textContent     = `${fmt(geo.height_z)} mm`;
-  document.getElementById('d-hull').textContent       = `${fmt(geo.footprint_area)} mm²`;
-  document.getElementById('d-bed').textContent        = `${d.bed.x} × ${d.bed.y} mm`;
-  document.getElementById('d-gap').textContent        = `${d.gap} mm`;
-  document.getElementById('d-grid').textContent       = `${pack.nx} × ${pack.ny}`;
-  document.getElementById('d-total').textContent      = `${pack.total} parts`;
-  document.getElementById('d-fill').textContent       = `${pack.fill_pct}%`;
-  document.getElementById('d-source-note').textContent = geo.source_note;
+  // Parts breakdown table
+  const tbody = document.getElementById('parts-tbody');
+  tbody.innerHTML = parts.map((p, i) => {
+    const geo   = p.geometry;
+    const color = PART_COLORS[i % PART_COLORS.length];
+    const total = fmt(geo.footprint_area * p.qty);
+    return `<tr>
+      <td><span class="part-color-dot" style="background:${color}"></span>${i + 1}</td>
+      <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.filename}">${p.filename}</td>
+      <td>${fmt(geo.bbox_x)} × ${fmt(geo.bbox_y)} mm</td>
+      <td>${fmt(geo.height_z)} mm</td>
+      <td>${fmt(geo.footprint_area)} mm²</td>
+      <td>${p.qty}</td>
+      <td>${total} mm²</td>
+    </tr>`;
+  }).join('');
 
-  // Footprint legend: only show if we have a real polygon (not just bbox)
+  // Packing details
+  document.getElementById('d-bed').textContent          = `${d.bed.x} × ${d.bed.y} mm`;
+  document.getElementById('d-gap').textContent          = `${d.gap} mm`;
+  document.getElementById('d-total-needed').textContent = `${totalNeeded}`;
+  document.getElementById('d-placed').textContent       = `${placed} ${allFit ? '✓ all fit' : '✗ overflow'}`;
+  document.getElementById('d-fill').textContent         = `${pack.fill_pct}%`;
+
+  // Source notes (one per unique file)
+  const notes = [...new Set(parts.map(p => p.geometry.source_note))];
+  document.getElementById('d-source-note').textContent = notes.join(' | ');
+
+  // Footprint polygon legend (only for single-part single view)
   document.getElementById('legend-hull').style.display =
-    geo.footprint_polygon ? 'flex' : 'none';
+    (isSingle && parts[0].geometry.footprint_polygon) ? 'flex' : 'none';
 
-  // SVG — render into the single bed-svg-container
-  currentView = 'single';
-  document.getElementById('vbtn-single').classList.add('active');
-  document.getElementById('vbtn-pack').classList.remove('active');
-  renderBedSVG(d, 'single');
+  // View toggle: only for single-file uploads
+  const toggle = document.getElementById('view-toggle');
+  if (isSingle) {
+    toggle.style.display = 'flex';
+    currentView = 'single';
+    document.getElementById('vbtn-single').classList.add('active');
+    document.getElementById('vbtn-pack').classList.remove('active');
+  } else {
+    toggle.style.display = 'none';
+    currentView = 'pack';
+  }
 
-  // Reveal view toggle + legend now that we have geometry
-  document.getElementById('view-toggle').style.display = 'flex';
+  renderBedSVG(d, currentView);
   document.getElementById('bed-legend').style.display  = 'flex';
-
-  // Show stats / details panel
   document.getElementById('results-content').style.display = 'flex';
 }
 
@@ -715,7 +836,7 @@ function renderBedSVG(d, view) {
 
   const bedMmX = d.bed.x;
   const bedMmY = d.bed.y;
-  const geo    = d.geometry;
+  const parts  = d.parts;
   const pack   = d.packing;
 
   const drawW = SVG_W - 2 * PAD;
@@ -730,55 +851,41 @@ function renderBedSVG(d, view) {
   function toSvg(mmx, mmy) {
     return [offX + mmx * scale, offY + mmy * scale];
   }
-  function ptStr(pts) {
-    return pts.map(p => toSvg(p[0], p[1]).join(',')).join(' ');
-  }
 
-  // ------------------------------------------------------------------
-  // Build an SVG <path d="…"> for a footprint polygon placed at
-  // bed offset (ox, oy) in mm. Uses the even-odd fill rule so holes
-  // (inner rings) are correctly cut out.
-  // ------------------------------------------------------------------
   function footprintPath(poly, ox, oy) {
     if (!poly) return null;
-
     function ringD(ring) {
       const moved = ring.map(p => [p[0] + ox, p[1] + oy]);
       return 'M ' + moved.map(p => toSvg(p[0], p[1]).join(' ')).join(' L ') + ' Z';
     }
-
-    let d = ringD(poly.exterior);
-    (poly.holes || []).forEach(h => { d += ' ' + ringD(h); });
-    return d;
+    let dStr = ringD(poly.exterior);
+    (poly.holes || []).forEach(h => { dStr += ' ' + ringD(h); });
+    return dStr;
   }
 
-  let defs_html  = '';
-  let parts_html = '';
+  let partsHtml = '';
 
-  if (view === 'single') {
-    // Centre the part's bounding box on the bed
-    const ox = (bedMmX - geo.bbox_x) / 2;
-    const oy = (bedMmY - geo.bbox_y) / 2;
+  if (view === 'single' && parts.length === 1) {
+    const geo   = parts[0].geometry;
+    const color = PART_COLORS[0];
+    const ox    = (bedMmX - geo.bbox_x) / 2;
+    const oy    = (bedMmY - geo.bbox_y) / 2;
     const [px, py] = toSvg(ox, oy);
     const pw = geo.bbox_x * scale;
     const ph = geo.bbox_y * scale;
 
-    // True footprint projection (filled, with even-odd holes)
     const fpd = footprintPath(geo.footprint_polygon, ox, oy);
     if (fpd) {
-      parts_html += `<path d="${fpd}" fill="rgba(99,102,241,0.30)"
+      partsHtml += `<path d="${fpd}" fill="rgba(99,102,241,0.30)"
         stroke="#6366f1" stroke-width="1.5" fill-rule="evenodd"/>`;
       document.getElementById('legend-hull').style.display = 'flex';
     }
 
-    // Bounding box outline (always shown for reference)
-    parts_html += `
+    partsHtml += `
       <rect x="${px}" y="${py}" width="${pw}" height="${ph}"
         fill="${fpd ? 'none' : 'rgba(59,130,246,0.30)'}"
-        stroke="#2563eb" stroke-width="2" stroke-dasharray="${fpd ? '6,3' : 'none'}" rx="2"/>`;
-
-    // Dimension labels inside the bbox
-    parts_html += `
+        stroke="${color}" stroke-width="2"
+        stroke-dasharray="${fpd ? '6,3' : 'none'}" rx="2"/>
       <text x="${px + pw/2}" y="${py + ph/2 - 6}" text-anchor="middle"
         font-size="11" font-weight="600" fill="#1d4ed8" style="pointer-events:none">
         ${fmt(geo.bbox_x)} × ${fmt(geo.bbox_y)} mm
@@ -789,40 +896,48 @@ function renderBedSVG(d, view) {
       </text>`;
 
   } else {
-    // Grid pack view — draw bounding boxes (true footprint inside each would be
-    // too many polygons; bbox is what controls spacing anyway)
+    // Pack view — draw all placements from the packing result
     document.getElementById('legend-hull').style.display = 'none';
-    const MAX_RENDER = 300;
+    const MAX_RENDER = 500;
     const shown = pack.placements.slice(0, MAX_RENDER);
-    shown.forEach((p, i) => {
-      const [px, py] = toSvg(p.x, p.y);
-      const pw = geo.bbox_x * scale;
-      const ph = geo.bbox_y * scale;
-      const first = i === 0;
 
-      // For the first slot optionally draw the true footprint
-      if (first && geo.footprint_polygon) {
-        const fpd = footprintPath(geo.footprint_polygon, p.x, p.y);
+    shown.forEach((pl, i) => {
+      const geo   = parts[pl.idx].geometry;
+      const color = PART_COLORS[pl.idx % PART_COLORS.length];
+      const [px, py] = toSvg(pl.x, pl.y);
+      const pw = pl.w * scale;
+      const ph = pl.h * scale;
+
+      // Draw true footprint for the first instance of each part type
+      const isFirstOfType = shown.findIndex(p => p.idx === pl.idx) === i;
+      if (isFirstOfType && geo.footprint_polygon) {
+        const fpd = footprintPath(geo.footprint_polygon, pl.x, pl.y);
         if (fpd) {
-          parts_html += `<path d="${fpd}" fill="rgba(37,99,235,0.40)"
-            stroke="#1d4ed8" stroke-width="1" fill-rule="evenodd"/>`;
+          const hex = color;
+          const fill = hexToRgba(hex, 0.30);
+          partsHtml += `<path d="${fpd}" fill="${fill}"
+            stroke="${hex}" stroke-width="1" fill-rule="evenodd"/>`;
         }
       }
 
-      parts_html += `
+      partsHtml += `
         <rect x="${px}" y="${py}" width="${pw}" height="${ph}"
-          fill="${first ? 'none' : 'rgba(59,130,246,0.20)'}"
-          stroke="${first ? '#1d4ed8' : '#93c5fd'}"
-          stroke-width="${first ? 1.5 : 0.7}" rx="1"/>`;
+          fill="${hexToRgba(color, isFirstOfType ? 0 : 0.18)}"
+          stroke="${color}" stroke-width="${isFirstOfType ? 1.5 : 0.8}" rx="1"/>`;
     });
+
     if (pack.placements.length > MAX_RENDER) {
       const [tx, ty] = toSvg(bedMmX / 2, bedMmY / 2);
-      parts_html += `<text x="${tx}" y="${ty}" text-anchor="middle"
+      partsHtml += `<text x="${tx}" y="${ty}" text-anchor="middle"
         font-size="11" fill="#6b7280">(${pack.placements.length - MAX_RENDER} more…)</text>`;
     }
   }
 
   const gridSz = Math.max(4, scale * 10);
+  const annot  = view === 'single'
+    ? `${d.assessment.fill_pct}% bed fill · 1 part`
+    : `${pack.placed_count}/${pack.total_needed} parts · ${pack.fill_pct}% fill`;
+
   const svg = `
   <svg width="${SVG_W}" height="${SVG_H}" viewBox="0 0 ${SVG_W} ${SVG_H}"
        xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto">
@@ -832,37 +947,31 @@ function renderBedSVG(d, view) {
         <path d="M ${gridSz} 0 L 0 0 0 ${gridSz}"
               fill="none" stroke="#e5e7eb" stroke-width="0.5"/>
       </pattern>
-      ${defs_html}
     </defs>
-
-    <!-- Bed -->
     <rect x="${offX}" y="${offY}" width="${bedPxW}" height="${bedPxH}"
       fill="url(#bg-grid)" rx="3"/>
     <rect x="${offX}" y="${offY}" width="${bedPxW}" height="${bedPxH}"
       fill="none" stroke="#4b5563" stroke-width="2" rx="3"/>
-
-    <!-- Parts / footprint -->
-    ${parts_html}
-
-    <!-- Bed label -->
+    ${partsHtml}
     <text x="${offX + bedPxW/2}" y="${offY - 12}" text-anchor="middle"
       font-size="12" font-weight="600" fill="#374151">
       Bed: ${bedMmX} × ${bedMmY} mm
     </text>
-
-    <!-- Annotation -->
-    ${view === 'single' ? `
     <text x="${offX + bedPxW - 4}" y="${offY + bedPxH + 20}" text-anchor="end"
-      font-size="10" fill="#6b7280">
-      Single part: ${d.assessment.single_part_pct}% of bed area
-    </text>` : `
-    <text x="${offX + bedPxW - 4}" y="${offY + bedPxH + 20}" text-anchor="end"
-      font-size="10" fill="#6b7280">
-      ${pack.total} parts · ${pack.fill_pct}% fill (${pack.nx}×${pack.ny} grid)
-    </text>`}
+      font-size="10" fill="#6b7280">${annot}</text>
   </svg>`;
 
   document.getElementById('bed-svg-container').innerHTML = svg;
+}
+
+// ================================================================
+// Utility
+// ================================================================
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${alpha})`;
 }
 </script>
 </body>

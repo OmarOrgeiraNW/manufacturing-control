@@ -22,11 +22,6 @@ GAP_DEFAULT = 2.0
 # ---------------------------------------------------------------------------
 
 def _shapely_to_polygon_data(geom, x_min: float, y_min: float):
-    """
-    Convert a Shapely polygon to the JSON structure the frontend expects.
-    Coordinates are returned relative to (x_min, y_min) so the frontend can
-    position the part anywhere on the bed.
-    """
     def norm(coords):
         return [[round(p[0] - x_min, 4), round(p[1] - y_min, 4)] for p in coords]
 
@@ -40,25 +35,20 @@ def _shapely_to_polygon_data(geom, x_min: float, y_min: float):
             "area":     float(geom.area),
         }
     if geom.geom_type == "MultiPolygon":
-        # Pick the largest polygon for the outline (the user's main part)
         largest = max(geom.geoms, key=lambda g: g.area)
         return {
             "exterior": norm(largest.exterior.coords),
             "holes":    [norm(h.coords) for h in largest.interiors],
-            "area":     float(geom.area),   # total of all parts
+            "area":     float(geom.area),
         }
     return None
 
 
 # ---------------------------------------------------------------------------
-# STL analyser — uses trimesh for robust loading + projected outline
+# STL analyser
 # ---------------------------------------------------------------------------
 
 def analyze_stl(filepath: str) -> dict:
-    """
-    Load any STL file (binary, ASCII, multi-solid, scene) via trimesh,
-    then compute the true XY orthographic projection looking down -Z.
-    """
     loaded = trimesh.load(filepath, force="mesh")
 
     if hasattr(loaded, "geometry") and not isinstance(loaded, trimesh.Trimesh):
@@ -76,7 +66,6 @@ def analyze_stl(filepath: str) -> dict:
     n_tris = len(mesh.triangles)
     n_verts = len(verts)
 
-    # Bounding box from ALL vertices — guaranteed correct
     mins = verts.min(axis=0)
     maxs = verts.max(axis=0)
     bbox_x = float(maxs[0] - mins[0])
@@ -84,15 +73,12 @@ def analyze_stl(filepath: str) -> dict:
     height = float(maxs[2] - mins[2])
     x_min, y_min = float(mins[0]), float(mins[1])
 
-    # True XY footprint: trimesh handles silhouette projection robustly,
-    # including concave shapes, holes and complex/disjoint meshes.
     try:
         footprint = trimesh_projected(mesh, normal=[0.0, 0.0, 1.0])
     except Exception:
         footprint = None
 
     if footprint is None or footprint.is_empty:
-        # Last-resort fallback so we still return something useful
         footprint = MultiPoint(verts[:, :2]).convex_hull
         source_note = (
             f"Loaded {n_verts:,} vertices · {n_tris:,} triangles. "
@@ -105,7 +91,6 @@ def analyze_stl(filepath: str) -> dict:
         )
 
     fp_area = float(footprint.area)
-    # Simplify outline for SVG rendering (tolerance: 0.1% of bbox diagonal)
     tol = max(0.01, math.sqrt(bbox_x**2 + bbox_y**2) * 0.001)
     simplified = footprint.simplify(tol, preserve_topology=True)
     poly_data = _shapely_to_polygon_data(simplified, x_min, y_min)
@@ -124,7 +109,7 @@ def analyze_stl(filepath: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# STEP analyser — convex hull of extracted ASCII CARTESIAN_POINTs
+# STEP analyser
 # ---------------------------------------------------------------------------
 
 def analyze_step(filepath: str) -> dict:
@@ -186,35 +171,85 @@ def analyze_step(filepath: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Packing + assessment
+# Multi-part packing (shelf algorithm)
 # ---------------------------------------------------------------------------
 
-def packing_estimate(bbox_x, bbox_y, bed_x, bed_y, gap):
-    step_x = bbox_x + gap
-    step_y = bbox_y + gap
-    nx = max(0, math.floor(bed_x / step_x)) if step_x > 0 else 0
-    ny = max(0, math.floor(bed_y / step_y)) if step_y > 0 else 0
-    total = nx * ny
+def multi_packing_estimate(parts_info: list, bed_x: float, bed_y: float, gap: float) -> dict:
+    """
+    Greedy shelf packing for a mixed list of parts with quantities.
+    parts_info: list of {"bbox_x", "bbox_y", "qty"} ordered by part index.
+    """
+    items = []
+    for i, p in enumerate(parts_info):
+        for _ in range(int(p["qty"])):
+            items.append({"w": float(p["bbox_x"]), "h": float(p["bbox_y"]), "idx": i})
+    # Sort tallest first so each shelf's height is set by its first (tallest) item
+    items.sort(key=lambda x: x["h"], reverse=True)
 
-    used_area = total * bbox_x * bbox_y
+    placements = []
+    cur_x = 0.0
+    cur_y = 0.0
+    shelf_h = 0.0
+
+    for item in items:
+        w, h = item["w"], item["h"]
+        if w > bed_x + 1e-9 or h > bed_y + 1e-9:
+            continue  # single item too large for bed
+        if cur_x + w <= bed_x + 1e-9:
+            placements.append({"x": round(cur_x, 3), "y": round(cur_y, 3),
+                               "w": round(w, 3), "h": round(h, 3), "idx": item["idx"]})
+            if shelf_h == 0:
+                shelf_h = h
+            cur_x += w + gap
+        else:
+            cur_y += shelf_h + gap
+            cur_x = 0.0
+            shelf_h = h
+            if cur_y + h > bed_y + 1e-9:
+                break
+            placements.append({"x": round(cur_x, 3), "y": round(cur_y, 3),
+                               "w": round(w, 3), "h": round(h, 3), "idx": item["idx"]})
+            cur_x = w + gap
+
+    total_needed = sum(int(p["qty"]) for p in parts_info)
+    placed_count = len(placements)
     bed_area = bed_x * bed_y
-    fill_pct = round(used_area / bed_area * 100, 1) if bed_area > 0 else 0
-    placements = [{"x": c * step_x, "y": r * step_y} for r in range(ny) for c in range(nx)]
-    return {"nx": nx, "ny": ny, "total": total, "fill_pct": fill_pct, "placements": placements}
+    placed_area = sum(pl["w"] * pl["h"] for pl in placements)
+    fill_pct = round(placed_area / bed_area * 100, 1) if bed_area > 0 else 0.0
+
+    return {
+        "placements":   placements,
+        "placed_count": placed_count,
+        "total_needed": total_needed,
+        "all_fit":      placed_count >= total_needed,
+        "fill_pct":     fill_pct,
+    }
 
 
-def bed_assessment(fp_area, bed_x, bed_y):
-    bed_area = bed_x * bed_y
-    pct = round(fp_area / bed_area * 100, 1) if bed_area > 0 else 0
-    if pct >= 80:
-        level, msg, color = "full", "Bed is essentially full with this single part.", "red"
-    elif pct >= 50:
-        level, msg, color = "crowded", "More than half the bed is occupied. Limited room for additional parts.", "amber"
-    elif pct >= 20:
-        level, msg, color = "moderate", "Reasonable space available. More parts can be added.", "blue"
+def multi_bed_assessment(pack_result: dict) -> dict:
+    placed = pack_result["placed_count"]
+    needed = pack_result["total_needed"]
+    fill   = pack_result["fill_pct"]
+
+    if not pack_result["all_fit"]:
+        level = "overflow"
+        msg   = f"Only {placed} of {needed} parts fit. Reduce quantities or use a larger bed."
+        color = "red"
+    elif fill >= 80:
+        level, color = "full", "red"
+        msg = "Bed is essentially full with all specified parts."
+    elif fill >= 50:
+        level, color = "crowded", "amber"
+        msg = "More than half the bed is occupied. Limited room to add more parts."
+    elif fill >= 20:
+        level, color = "moderate", "blue"
+        msg = "All parts fit with reasonable space available."
     else:
-        level, msg, color = "spacious", "Plenty of bed space remaining. Good candidate for batch printing.", "green"
-    return {"level": level, "message": msg, "color": color, "single_part_pct": pct}
+        level, color = "spacious", "green"
+        msg = "All parts fit with plenty of bed space remaining."
+
+    return {"level": level, "message": msg, "color": color,
+            "all_fit": pack_result["all_fit"], "fill_pct": fill}
 
 
 # ---------------------------------------------------------------------------
@@ -228,40 +263,54 @@ def index():
 
 @app.route("/api/analyze", methods=["POST"])
 def api_analyze():
-    if "file" not in request.files:
-        return jsonify({"error": "No file uploaded."}), 400
-    f = request.files["file"]
-    if not f.filename:
-        return jsonify({"error": "Empty filename."}), 400
-
-    ext = os.path.splitext(f.filename)[1].lower()
-    if ext not in ALLOWED_EXT:
-        return jsonify({"error": f"Unsupported format '{ext}'. Upload .stl, .step, or .stp."}), 400
-
-    bed_x = float(request.form.get("bed_x", 250))
-    bed_y = float(request.form.get("bed_y", 250))
+    bed_x = float(request.form.get("bed_x", 200))
+    bed_y = float(request.form.get("bed_y", 200))
     gap   = float(request.form.get("gap",   GAP_DEFAULT))
 
-    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
-        f.save(tmp.name)
-        tmp_path = tmp.name
+    file_entries = []
+    i = 0
+    while f"file_{i}" in request.files:
+        f = request.files[f"file_{i}"]
+        qty = max(1, int(request.form.get(f"qty_{i}", 1) or 1))
+        if f.filename:
+            file_entries.append((f, qty))
+        i += 1
 
-    try:
-        geo = analyze_stl(tmp_path) if ext == ".stl" else analyze_step(tmp_path)
-    except Exception as exc:
-        return jsonify({"error": str(exc)}), 422
-    finally:
+    if not file_entries:
+        return jsonify({"error": "No files uploaded."}), 400
+
+    parts = []
+    for f, qty in file_entries:
+        ext = os.path.splitext(f.filename)[1].lower()
+        if ext not in ALLOWED_EXT:
+            return jsonify({"error": f"Unsupported format '{ext}' in '{f.filename}'. "
+                                      "Upload .stl, .step, or .stp."}), 400
+
+        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+            f.save(tmp.name)
+            tmp_path = tmp.name
+
         try:
-            os.unlink(tmp_path)
-        except FileNotFoundError:
-            pass
+            geo = analyze_stl(tmp_path) if ext == ".stl" else analyze_step(tmp_path)
+        except Exception as exc:
+            return jsonify({"error": f"{f.filename}: {exc}"}), 422
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except FileNotFoundError:
+                pass
 
-    pack = packing_estimate(geo["bbox_x"], geo["bbox_y"], bed_x, bed_y, gap)
-    assessment = bed_assessment(geo["footprint_area"], bed_x, bed_y)
+        parts.append({"filename": f.filename, "qty": qty, "geometry": geo})
+
+    pack = multi_packing_estimate(
+        [{"bbox_x": p["geometry"]["bbox_x"], "bbox_y": p["geometry"]["bbox_y"],
+          "qty": p["qty"]} for p in parts],
+        bed_x, bed_y, gap,
+    )
+    assessment = multi_bed_assessment(pack)
 
     return jsonify({
-        "filename":   f.filename,
-        "geometry":   geo,
+        "parts":      parts,
         "packing":    pack,
         "assessment": assessment,
         "bed":        {"x": bed_x, "y": bed_y},
