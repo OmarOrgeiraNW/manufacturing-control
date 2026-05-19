@@ -406,7 +406,7 @@ main {
         </div>
         <div class="legend-item" id="legend-hull" style="display:none">
           <div class="legend-swatch" style="background:rgba(99,102,241,.35);border:1px solid #6366f1"></div>
-          <span>Convex hull</span>
+          <span>True footprint projection</span>
         </div>
         <div class="legend-item">
           <div class="legend-swatch" style="background:#f0fdf4;border:1px dashed #16a34a"></div>
@@ -440,7 +440,7 @@ main {
           <div class="stat-unit">mm (Z axis)</div>
         </div>
         <div class="stat-card">
-          <div class="stat-lbl">Convex Hull Area</div>
+          <div class="stat-lbl">Projected Footprint Area</div>
           <div class="stat-val" id="s-hull-area">—</div>
           <div class="stat-unit">mm²</div>
         </div>
@@ -492,7 +492,7 @@ main {
           <span class="pack-row-val" id="d-height">—</span>
         </div>
         <div class="pack-row">
-          <span class="pack-row-lbl">Convex hull area</span>
+          <span class="pack-row-lbl">Projected footprint area</span>
           <span class="pack-row-val" id="d-hull">—</span>
         </div>
         <div class="pack-row">
@@ -641,7 +641,7 @@ function renderResults(d) {
   // Stats
   document.getElementById('s-footprint').textContent  = `${fmt(geo.bbox_x)} × ${fmt(geo.bbox_y)}`;
   document.getElementById('s-height').textContent     = fmt(geo.height_z);
-  document.getElementById('s-hull-area').textContent  = fmt(geo.hull_area);
+  document.getElementById('s-hull-area').textContent  = fmt(geo.footprint_area);
   document.getElementById('s-bbox-area').textContent  = fmt(geo.bbox_area);
   document.getElementById('s-usage-pct').textContent  = ass.single_part_pct + '%';
   document.getElementById('s-copies').textContent     = pack.total;
@@ -658,7 +658,7 @@ function renderResults(d) {
   document.getElementById('d-filename').textContent   = d.filename;
   document.getElementById('d-bbox').textContent       = `${fmt(geo.bbox_x)} × ${fmt(geo.bbox_y)} mm`;
   document.getElementById('d-height').textContent     = `${fmt(geo.height_z)} mm`;
-  document.getElementById('d-hull').textContent       = `${fmt(geo.hull_area)} mm²`;
+  document.getElementById('d-hull').textContent       = `${fmt(geo.footprint_area)} mm²`;
   document.getElementById('d-bed').textContent        = `${d.bed.x} × ${d.bed.y} mm`;
   document.getElementById('d-gap').textContent        = `${d.gap} mm`;
   document.getElementById('d-grid').textContent       = `${pack.nx} × ${pack.ny}`;
@@ -666,9 +666,9 @@ function renderResults(d) {
   document.getElementById('d-fill').textContent       = `${pack.fill_pct}%`;
   document.getElementById('d-source-note').textContent = geo.source_note;
 
-  // Hull legend visibility
+  // Footprint legend: only show if we have a real polygon (not just bbox)
   document.getElementById('legend-hull').style.display =
-    geo.hull_polygon ? 'flex' : 'none';
+    geo.footprint_polygon ? 'flex' : 'none';
 
   // SVG — render into the single bed-svg-container
   currentView = 'single';
@@ -706,14 +706,13 @@ function setView(v, btn) {
 function renderBedSVG(d, view) {
   const SVG_W = 640;
   const SVG_H = 480;
-  const PAD   = 40;  // padding inside SVG
+  const PAD   = 40;
 
   const bedMmX = d.bed.x;
   const bedMmY = d.bed.y;
   const geo    = d.geometry;
   const pack   = d.packing;
 
-  // Scale: fit bed into available drawing area
   const drawW = SVG_W - 2 * PAD;
   const drawH = SVG_H - 2 * PAD;
   const scale = Math.min(drawW / bedMmX, drawH / bedMmY);
@@ -723,95 +722,121 @@ function renderBedSVG(d, view) {
   const offX   = PAD + (drawW - bedPxW) / 2;
   const offY   = PAD + (drawH - bedPxH) / 2;
 
-  function mmToSvg(mmx, mmy) {
+  function toSvg(mmx, mmy) {
     return [offX + mmx * scale, offY + mmy * scale];
   }
+  function ptStr(pts) {
+    return pts.map(p => toSvg(p[0], p[1]).join(',')).join(' ');
+  }
 
+  // ------------------------------------------------------------------
+  // Build an SVG <path d="…"> for a footprint polygon placed at
+  // bed offset (ox, oy) in mm. Uses the even-odd fill rule so holes
+  // (inner rings) are correctly cut out.
+  // ------------------------------------------------------------------
+  function footprintPath(poly, ox, oy) {
+    if (!poly) return null;
+
+    function ringD(ring) {
+      const moved = ring.map(p => [p[0] + ox, p[1] + oy]);
+      return 'M ' + moved.map(p => toSvg(p[0], p[1]).join(' ')).join(' L ') + ' Z';
+    }
+
+    let d = ringD(poly.exterior);
+    (poly.holes || []).forEach(h => { d += ' ' + ringD(h); });
+    return d;
+  }
+
+  let defs_html  = '';
   let parts_html = '';
 
   if (view === 'single') {
-    // Single part centred on bed
-    const cx = (bedMmX - geo.bbox_x) / 2;
-    const cy = (bedMmY - geo.bbox_y) / 2;
-    const [px, py]   = mmToSvg(cx, cy);
-    const pw         = geo.bbox_x * scale;
-    const ph         = geo.bbox_y * scale;
+    // Centre the part's bounding box on the bed
+    const ox = (bedMmX - geo.bbox_x) / 2;
+    const oy = (bedMmY - geo.bbox_y) / 2;
+    const [px, py] = toSvg(ox, oy);
+    const pw = geo.bbox_x * scale;
+    const ph = geo.bbox_y * scale;
 
-    // Convex hull (if available)
-    if (geo.hull_polygon && geo.hull_polygon.length > 2) {
-      const pts = geo.hull_polygon.map(p => {
-        const [sx, sy] = mmToSvg(cx + p[0], cy + p[1]);
-        return `${sx},${sy}`;
-      }).join(' ');
-      parts_html += `<polygon points="${pts}"
-        fill="rgba(99,102,241,0.25)" stroke="#6366f1" stroke-width="1.5"
-        stroke-dasharray="4,2"/>`;
+    // True footprint projection (filled, with even-odd holes)
+    const fpd = footprintPath(geo.footprint_polygon, ox, oy);
+    if (fpd) {
+      parts_html += `<path d="${fpd}" fill="rgba(99,102,241,0.30)"
+        stroke="#6366f1" stroke-width="1.5" fill-rule="evenodd"/>`;
       document.getElementById('legend-hull').style.display = 'flex';
     }
 
-    // Bounding box
+    // Bounding box outline (always shown for reference)
     parts_html += `
       <rect x="${px}" y="${py}" width="${pw}" height="${ph}"
-        fill="rgba(59,130,246,0.35)" stroke="#2563eb" stroke-width="2" rx="2"/>
+        fill="${fpd ? 'none' : 'rgba(59,130,246,0.30)'}"
+        stroke="#2563eb" stroke-width="2" stroke-dasharray="${fpd ? '6,3' : 'none'}" rx="2"/>`;
+
+    // Dimension labels inside the bbox
+    parts_html += `
       <text x="${px + pw/2}" y="${py + ph/2 - 6}" text-anchor="middle"
-        font-size="11" font-weight="600" fill="#1d4ed8"
-        style="pointer-events:none">${fmt(geo.bbox_x)} × ${fmt(geo.bbox_y)} mm</text>
+        font-size="11" font-weight="600" fill="#1d4ed8" style="pointer-events:none">
+        ${fmt(geo.bbox_x)} × ${fmt(geo.bbox_y)} mm
+      </text>
       <text x="${px + pw/2}" y="${py + ph/2 + 10}" text-anchor="middle"
         font-size="10" fill="#2563eb" style="pointer-events:none">
         H: ${fmt(geo.height_z)} mm
       </text>`;
 
-    // Cross-hair centre dot
-    const [cx2, cy2] = mmToSvg(bedMmX / 2, bedMmY / 2);
-    parts_html += `<circle cx="${cx2}" cy="${cy2}" r="3" fill="none" stroke="#d1d5db" stroke-width="1" stroke-dasharray="3,3"/>`;
-
   } else {
-    // Grid pack view
+    // Grid pack view — draw bounding boxes (true footprint inside each would be
+    // too many polygons; bbox is what controls spacing anyway)
     document.getElementById('legend-hull').style.display = 'none';
-    const MAX_RENDER = 200; // cap for performance
-    const placements = pack.placements.slice(0, MAX_RENDER);
-    placements.forEach((p, i) => {
-      const [px, py] = mmToSvg(p.x, p.y);
+    const MAX_RENDER = 300;
+    const shown = pack.placements.slice(0, MAX_RENDER);
+    shown.forEach((p, i) => {
+      const [px, py] = toSvg(p.x, p.y);
       const pw = geo.bbox_x * scale;
       const ph = geo.bbox_y * scale;
-      const isFirst = i === 0;
+      const first = i === 0;
+
+      // For the first slot optionally draw the true footprint
+      if (first && geo.footprint_polygon) {
+        const fpd = footprintPath(geo.footprint_polygon, p.x, p.y);
+        if (fpd) {
+          parts_html += `<path d="${fpd}" fill="rgba(37,99,235,0.40)"
+            stroke="#1d4ed8" stroke-width="1" fill-rule="evenodd"/>`;
+        }
+      }
+
       parts_html += `
         <rect x="${px}" y="${py}" width="${pw}" height="${ph}"
-          fill="${isFirst ? 'rgba(37,99,235,0.45)' : 'rgba(59,130,246,0.25)'}"
-          stroke="${isFirst ? '#1d4ed8' : '#93c5fd'}" stroke-width="${isFirst ? 1.5 : 0.8}" rx="1"/>`;
+          fill="${first ? 'none' : 'rgba(59,130,246,0.20)'}"
+          stroke="${first ? '#1d4ed8' : '#93c5fd'}"
+          stroke-width="${first ? 1.5 : 0.7}" rx="1"/>`;
     });
     if (pack.placements.length > MAX_RENDER) {
-      const [tx, ty] = mmToSvg(bedMmX / 2, bedMmY / 2);
+      const [tx, ty] = toSvg(bedMmX / 2, bedMmY / 2);
       parts_html += `<text x="${tx}" y="${ty}" text-anchor="middle"
-        font-size="11" fill="#6b7280" style="pointer-events:none">
-        (${pack.placements.length - MAX_RENDER} more not shown for performance)
-      </text>`;
+        font-size="11" fill="#6b7280">(${pack.placements.length - MAX_RENDER} more…)</text>`;
     }
   }
 
-  // Dimension arrows
-  const [ax1, ay1] = mmToSvg(0, bedMmY);
-  const [ax2, ay2] = mmToSvg(bedMmX, bedMmY);
-  const [ay3, ax3] = [offY - 10, offX - 10];
-
+  const gridSz = Math.max(4, scale * 10);
   const svg = `
   <svg width="${SVG_W}" height="${SVG_H}" viewBox="0 0 ${SVG_W} ${SVG_H}"
        xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto">
     <defs>
-      <pattern id="bg-grid" width="${Math.max(4, scale * 10)}" height="${Math.max(4, scale * 10)}"
+      <pattern id="bg-grid" width="${gridSz}" height="${gridSz}"
                patternUnits="userSpaceOnUse" x="${offX}" y="${offY}">
-        <path d="M ${Math.max(4, scale*10)} 0 L 0 0 0 ${Math.max(4, scale*10)}"
+        <path d="M ${gridSz} 0 L 0 0 0 ${gridSz}"
               fill="none" stroke="#e5e7eb" stroke-width="0.5"/>
       </pattern>
+      ${defs_html}
     </defs>
 
-    <!-- Bed background -->
+    <!-- Bed -->
     <rect x="${offX}" y="${offY}" width="${bedPxW}" height="${bedPxH}"
-      fill="url(#bg-grid)" stroke="#9ca3af" stroke-width="2" rx="3"/>
+      fill="url(#bg-grid)" rx="3"/>
     <rect x="${offX}" y="${offY}" width="${bedPxW}" height="${bedPxH}"
       fill="none" stroke="#4b5563" stroke-width="2" rx="3"/>
 
-    <!-- Parts -->
+    <!-- Parts / footprint -->
     ${parts_html}
 
     <!-- Bed label -->
@@ -820,7 +845,7 @@ function renderBedSVG(d, view) {
       Bed: ${bedMmX} × ${bedMmY} mm
     </text>
 
-    <!-- Usage annotation (single view) -->
+    <!-- Annotation -->
     ${view === 'single' ? `
     <text x="${offX + bedPxW - 4}" y="${offY + bedPxH + 20}" text-anchor="end"
       font-size="10" fill="#6b7280">
