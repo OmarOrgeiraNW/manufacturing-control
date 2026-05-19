@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LPBF Bed Footprint Calculator</title>
+<style>
+:root {
+  --blue:    #2563eb;
+  --blue-dk: #1d4ed8;
+  --green:   #16a34a;
+  --amber:   #d97706;
+  --red:     #dc2626;
+  --indigo:  #6366f1;
+  --gray-0:  #f9fafb;
+  --gray-1:  #f3f4f6;
+  --gray-2:  #e5e7eb;
+  --gray-3:  #d1d5db;
+  --gray-5:  #6b7280;
+  --gray-7:  #374151;
+  --gray-9:  #111827;
+  --r:       8px;
+  --sh:      0 1px 3px rgba(0,0,0,.10), 0 1px 2px rgba(0,0,0,.06);
+  --sh-lg:   0 10px 25px -5px rgba(0,0,0,.15);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--gray-0);
+  color: var(--gray-9);
+  line-height: 1.5;
+  font-size: 14px;
+  min-height: 100vh;
+}
+
+header {
+  background: #fff;
+  border-bottom: 1px solid var(--gray-2);
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 52px;
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  box-shadow: var(--sh);
+}
+.logo { font-weight: 700; font-size: 1rem; color: var(--blue); letter-spacing: -.3px; white-space: nowrap; }
+.beta-badge {
+  background: #ede9fe; color: #5b21b6;
+  padding: 2px 9px; border-radius: 99px;
+  font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+}
+.header-sub { font-size: .82rem; color: var(--gray-5); }
+
+main {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px;
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+/* ---- Sidebar ---- */
+.sidebar { display: flex; flex-direction: column; gap: 16px; }
+
+.card {
+  background: #fff;
+  border-radius: var(--r);
+  border: 1px solid var(--gray-2);
+  box-shadow: var(--sh);
+  padding: 18px;
+}
+.card-title {
+  font-size: .72rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--gray-5); margin-bottom: 14px;
+}
+
+/* ---- Upload zone ---- */
+.drop-zone {
+  border: 2px dashed var(--gray-3);
+  border-radius: var(--r);
+  padding: 28px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+  position: relative;
+}
+.drop-zone:hover, .drop-zone.dragover {
+  border-color: var(--blue);
+  background: #eff6ff;
+}
+.drop-zone input[type=file] {
+  position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+}
+.drop-icon { font-size: 2rem; margin-bottom: 8px; }
+.drop-text { font-size: .875rem; font-weight: 600; color: var(--gray-7); margin-bottom: 4px; }
+.drop-sub  { font-size: .75rem; color: var(--gray-5); }
+
+.file-chip {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--gray-0); border: 1px solid var(--gray-2);
+  border-radius: var(--r); padding: 8px 12px;
+  font-size: .82rem; margin-top: 10px;
+}
+.file-chip-name { font-weight: 600; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-chip-size { color: var(--gray-5); flex-shrink: 0; }
+
+/* ---- Form fields ---- */
+.fg { margin-bottom: 12px; }
+.fg label {
+  display: block; font-size: .78rem; font-weight: 600;
+  color: var(--gray-7); margin-bottom: 4px;
+}
+.fg input, .fg select {
+  width: 100%; padding: 7px 10px;
+  border: 1px solid var(--gray-3); border-radius: var(--r);
+  font-size: .875rem; font-family: inherit; background: #fff;
+  transition: border-color .15s, box-shadow .15s;
+}
+.fg input:focus, .fg select:focus {
+  outline: none; border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(37,99,235,.12);
+}
+.row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.fg-hint { font-size: .72rem; color: var(--gray-5); margin-top: 3px; }
+
+/* ---- Buttons ---- */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border: none; border-radius: var(--r);
+  cursor: pointer; font-size: .875rem; font-weight: 600;
+  transition: filter .12s; white-space: nowrap; width: 100%;
+  justify-content: center;
+}
+.btn:hover { filter: brightness(.93); }
+.btn-primary { background: var(--blue); color: #fff; }
+.btn:disabled { opacity: .5; cursor: not-allowed; filter: none; }
+
+/* ---- Results area ---- */
+.results { display: flex; flex-direction: column; gap: 20px; }
+
+/* ---- Bed viz ---- */
+.bed-wrap {
+  background: #fff; border: 1px solid var(--gray-2);
+  border-radius: var(--r); box-shadow: var(--sh);
+  padding: 18px;
+}
+.bed-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 16px; flex-wrap: wrap; gap: 8px;
+}
+.bed-header h2 { font-size: 1rem; font-weight: 600; }
+.view-toggle { display: flex; gap: 4px; }
+.view-btn {
+  padding: 4px 12px; border: 1px solid var(--gray-3);
+  border-radius: var(--r); background: #fff; cursor: pointer;
+  font-size: .78rem; font-weight: 500; color: var(--gray-7);
+  transition: background .1s, color .1s;
+}
+.view-btn.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+
+#bed-svg-container {
+  background: #fafbfc;
+  border: 1px solid var(--gray-2);
+  border-radius: 6px;
+  overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  min-height: 320px;
+}
+#bed-svg-container svg { display: block; }
+.bed-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 60px 20px; text-align: center; color: var(--gray-5); width: 100%;
+}
+.bed-empty-icon { font-size: 3rem; margin-bottom: 12px; opacity: .4; }
+.bed-empty-text { font-size: .9rem; font-weight: 500; color: var(--gray-7); margin-bottom: 4px; }
+.bed-empty-sub  { font-size: .78rem; }
+
+/* ---- Stats grid ---- */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}
+.stat-card {
+  background: #fff; border: 1px solid var(--gray-2);
+  border-radius: var(--r); padding: 14px 16px;
+  box-shadow: var(--sh);
+}
+.stat-lbl { font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; color: var(--gray-5); margin-bottom: 4px; }
+.stat-val { font-size: 1.3rem; font-weight: 700; color: var(--gray-9); line-height: 1.1; }
+.stat-unit { font-size: .72rem; color: var(--gray-5); margin-top: 2px; }
+
+/* ---- Assessment banner ---- */
+.assessment {
+  border-radius: var(--r); padding: 14px 18px;
+  border-width: 1px; border-style: solid;
+  display: flex; align-items: flex-start; gap: 12px;
+}
+.assessment.green  { background: #f0fdf4; border-color: #bbf7d0; color: #15803d; }
+.assessment.blue   { background: #eff6ff; border-color: #bfdbfe; color: #1e40af; }
+.assessment.amber  { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+.assessment.red    { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+.assessment-icon { font-size: 1.4rem; flex-shrink: 0; }
+.assessment-text { flex: 1; }
+.assessment-level { font-weight: 700; font-size: .9rem; text-transform: capitalize; }
+.assessment-msg   { font-size: .82rem; margin-top: 2px; }
+
+/* ---- Packing detail ---- */
+.pack-detail {
+  background: #fff; border: 1px solid var(--gray-2);
+  border-radius: var(--r); box-shadow: var(--sh); padding: 18px;
+}
+.pack-detail h3 { font-size: .9rem; font-weight: 600; margin-bottom: 14px; }
+.pack-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 0; border-bottom: 1px solid var(--gray-1);
+  font-size: .875rem;
+}
+.pack-row:last-child { border-bottom: none; }
+.pack-row-lbl { color: var(--gray-5); }
+.pack-row-val { font-weight: 600; }
+
+/* ---- Fill bar ---- */
+.fill-bar-wrap {
+  background: var(--gray-1); border-radius: 99px;
+  height: 10px; overflow: hidden; margin: 8px 0;
+}
+.fill-bar {
+  height: 100%; border-radius: 99px;
+  transition: width .4s ease;
+}
+.fill-bar.green  { background: var(--green); }
+.fill-bar.blue   { background: var(--blue); }
+.fill-bar.amber  { background: var(--amber); }
+.fill-bar.red    { background: var(--red); }
+
+/* ---- Source note ---- */
+.source-note {
+  font-size: .72rem; color: var(--gray-5);
+  background: var(--gray-0); border: 1px solid var(--gray-2);
+  border-radius: var(--r); padding: 8px 12px; margin-top: 4px;
+}
+
+/* ---- Spinner ---- */
+.spin {
+  display: inline-block; width: 22px; height: 22px;
+  border: 3px solid var(--gray-2); border-top-color: var(--blue);
+  border-radius: 50%; animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-overlay {
+  display: none; flex-direction: column; align-items: center;
+  justify-content: center; padding: 48px; gap: 12px; color: var(--gray-5);
+}
+.loading-overlay.show { display: flex; }
+
+/* ---- Error ---- */
+.error-banner {
+  display: none;
+  background: #fef2f2; border: 1px solid #fecaca;
+  border-radius: var(--r); padding: 12px 16px;
+  color: #991b1b; font-size: .875rem;
+}
+.error-banner.show { display: block; }
+
+/* ---- Legend ---- */
+.legend {
+  display: flex; gap: 16px; flex-wrap: wrap;
+  font-size: .72rem; color: var(--gray-5); margin-top: 10px;
+}
+.legend-item { display: flex; align-items: center; gap: 5px; }
+.legend-swatch {
+  width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0;
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+  main { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">⬡ LPBF Control</div>
+  <span class="beta-badge">Beta</span>
+  <span class="header-sub">Bed Footprint Calculator</span>
+</header>
+
+<main>
+
+  <!-- ===== SIDEBAR ===== -->
+  <aside class="sidebar">
+
+    <!-- Upload -->
+    <div class="card">
+      <div class="card-title">1 — Upload Part File</div>
+      <div class="drop-zone" id="drop-zone">
+        <input type="file" id="file-input" accept=".stl,.step,.stp">
+        <div class="drop-icon">📐</div>
+        <div class="drop-text">Drop your file here</div>
+        <div class="drop-sub">or click to browse</div>
+        <div class="drop-sub" style="margin-top:6px">STL · STEP · STP</div>
+      </div>
+      <div id="file-chip" style="display:none" class="file-chip">
+        <span id="chip-name" class="file-chip-name"></span>
+        <span id="chip-size" class="file-chip-size"></span>
+      </div>
+    </div>
+
+    <!-- Bed settings -->
+    <div class="card">
+      <div class="card-title">2 — Bed Configuration</div>
+
+      <div class="fg">
+        <label>Preset machine</label>
+        <select id="machine-preset" onchange="applyPreset()">
+          <option value="">— Custom —</option>
+          <option value="250,250">EOS M290 (250 × 250 mm)</option>
+          <option value="500,280">EOS M400 (500 × 280 mm)</option>
+          <option value="400,400">SLM 500 (400 × 400 mm)</option>
+          <option value="300,300">Renishaw RenAM 500 (300 × 300 mm)</option>
+          <option value="248,248">Trumpf TruPrint 3000 (248 × 248 mm)</option>
+          <option value="200,200">Concept Laser M2 (200 × 200 mm)</option>
+        </select>
+      </div>
+
+      <div class="row-2">
+        <div class="fg">
+          <label>Bed X (mm)</label>
+          <input type="number" id="bed-x" value="250" min="1" step="1">
+        </div>
+        <div class="fg">
+          <label>Bed Y (mm)</label>
+          <input type="number" id="bed-y" value="250" min="1" step="1">
+        </div>
+      </div>
+
+      <div class="fg">
+        <label>Part spacing / gap (mm)</label>
+        <input type="number" id="gap" value="2" min="0" step="0.5">
+        <div class="fg-hint">Minimum clearance between adjacent parts.</div>
+      </div>
+    </div>
+
+    <!-- Analyze -->
+    <div class="card" style="padding:14px">
+      <button class="btn btn-primary" id="analyze-btn" onclick="runAnalysis()" disabled>
+        Analyze Footprint
+      </button>
+      <div id="error-banner" class="error-banner" style="margin-top:10px"></div>
+    </div>
+
+    <!-- How it works -->
+    <div class="card" style="font-size:.78rem;color:var(--gray-5);line-height:1.6">
+      <div class="card-title">How it works</div>
+      <p style="margin-bottom:8px">
+        Upload a part that is already <strong>oriented for printing</strong> (Z = build direction).
+        The tool projects all geometry onto the XY plane and computes the footprint.
+      </p>
+      <p style="margin-bottom:8px">
+        <strong>STL</strong> — exact convex hull footprint from the full mesh.
+      </p>
+      <p>
+        <strong>STEP</strong> — bounding box and convex hull from extracted vertex data.
+        For maximum accuracy export an STL from your CAD tool.
+      </p>
+    </div>
+
+  </aside>
+
+  <!-- ===== RESULTS ===== -->
+  <section class="results">
+
+    <!-- Loading -->
+    <div class="loading-overlay" id="loading">
+      <span class="spin"></span>
+      <span>Analysing geometry…</span>
+    </div>
+
+    <!-- Initial empty state (shown before first analysis) -->
+    <div id="empty-state">
+      <div class="bed-wrap">
+        <div class="bed-header"><h2>Bed Visualisation</h2></div>
+        <div id="bed-svg-container">
+          <div class="bed-empty">
+            <div class="bed-empty-icon">🖨️</div>
+            <div class="bed-empty-text">No file analysed yet</div>
+            <div class="bed-empty-sub">Upload a part file and click Analyse Footprint</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Results (hidden until first successful analysis) -->
+    <div id="results-content" style="display:none">
+
+      <!-- Assessment banner -->
+      <div id="assessment-banner" class="assessment green">
+        <span class="assessment-icon" id="assess-icon">✅</span>
+        <div class="assessment-text">
+          <div class="assessment-level" id="assess-level">Spacious</div>
+          <div class="assessment-msg"  id="assess-msg">—</div>
+        </div>
+      </div>
+
+      <!-- Stats grid -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-lbl">Footprint</div>
+          <div class="stat-val" id="s-footprint">—</div>
+          <div class="stat-unit">W × D mm</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-lbl">Part Height</div>
+          <div class="stat-val" id="s-height">—</div>
+          <div class="stat-unit">mm (Z axis)</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-lbl">Convex Hull Area</div>
+          <div class="stat-val" id="s-hull-area">—</div>
+          <div class="stat-unit">mm²</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-lbl">Bounding Box Area</div>
+          <div class="stat-val" id="s-bbox-area">—</div>
+          <div class="stat-unit">mm²</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-lbl">Bed Usage (1 part)</div>
+          <div class="stat-val" id="s-usage-pct">—</div>
+          <div class="stat-unit">% of bed area</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-lbl">Max Copies (grid)</div>
+          <div class="stat-val" id="s-copies">—</div>
+          <div class="stat-unit" id="s-copies-grid">parts on bed</div>
+        </div>
+      </div>
+
+      <!-- Fill bar -->
+      <div style="background:#fff;border:1px solid var(--gray-2);border-radius:var(--r);padding:16px;box-shadow:var(--sh)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span style="font-size:.82rem;font-weight:600;color:var(--gray-7)">Grid pack fill rate</span>
+          <span style="font-size:.82rem;font-weight:700" id="fill-pct-label">—</span>
+        </div>
+        <div class="fill-bar-wrap">
+          <div class="fill-bar green" id="fill-bar" style="width:0%"></div>
+        </div>
+        <div style="font-size:.72rem;color:var(--gray-5);margin-top:4px">
+          Actual fill using rectangular grid packing with <span id="fill-gap-label">—</span> mm gap.
+          Convex-hull fill rate for a single part shown in stats above.
+        </div>
+      </div>
+
+      <!-- Bed visualisation -->
+      <div class="bed-wrap">
+        <div class="bed-header">
+          <h2>Bed Visualisation</h2>
+          <div class="view-toggle">
+            <button class="view-btn active" id="vbtn-single" onclick="setView('single',this)">Single part</button>
+            <button class="view-btn"        id="vbtn-pack"   onclick="setView('pack',this)">Grid pack</button>
+          </div>
+        </div>
+        <div id="bed-svg-container" style="min-height:360px"></div>
+        <div class="legend">
+          <div class="legend-item">
+            <div class="legend-swatch" style="background:#3b82f6;border:1px solid #1d4ed8"></div>
+            <span>Part footprint (bounding box)</span>
+          </div>
+          <div class="legend-item" id="legend-hull" style="display:none">
+            <div class="legend-swatch" style="background:rgba(99,102,241,.35);border:1px solid #6366f1"></div>
+            <span>Convex hull</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-swatch" style="background:#f0fdf4;border:1px dashed #16a34a"></div>
+            <span>Available bed area</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Packing detail -->
+      <div class="pack-detail">
+        <h3>Packing Details</h3>
+        <div class="pack-row">
+          <span class="pack-row-lbl">File name</span>
+          <span class="pack-row-val" id="d-filename">—</span>
+        </div>
+        <div class="pack-row">
+          <span class="pack-row-lbl">Bounding box footprint</span>
+          <span class="pack-row-val" id="d-bbox">—</span>
+        </div>
+        <div class="pack-row">
+          <span class="pack-row-lbl">Build height (Z)</span>
+          <span class="pack-row-val" id="d-height">—</span>
+        </div>
+        <div class="pack-row">
+          <span class="pack-row-lbl">Convex hull area</span>
+          <span class="pack-row-val" id="d-hull">—</span>
+        </div>
+        <div class="pack-row">
+          <span class="pack-row-lbl">Bed dimensions</span>
+          <span class="pack-row-val" id="d-bed">—</span>
+        </div>
+        <div class="pack-row">
+          <span class="pack-row-lbl">Part spacing (gap)</span>
+          <span class="pack-row-val" id="d-gap">—</span>
+        </div>
+        <div class="pack-row">
+          <span class="pack-row-lbl">Grid columns × rows</span>
+          <span class="pack-row-val" id="d-grid">—</span>
+        </div>
+        <div class="pack-row">
+          <span class="pack-row-lbl">Total parts in grid pack</span>
+          <span class="pack-row-val" id="d-total">—</span>
+        </div>
+        <div class="pack-row">
+          <span class="pack-row-lbl">Grid pack fill rate</span>
+          <span class="pack-row-val" id="d-fill">—</span>
+        </div>
+        <div class="source-note" id="d-source-note">—</div>
+      </div>
+
+    </div><!-- /results-content -->
+  </section>
+
+</main>
+
+<script>
+// ================================================================
+// State
+// ================================================================
+let currentFile  = null;
+let currentResult = null;
+let currentView  = 'single';
+
+// ================================================================
+// File input
+// ================================================================
+const dropZone  = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+
+dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  const f = e.dataTransfer.files[0];
+  if (f) setFile(f);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) setFile(fileInput.files[0]);
+});
+
+function setFile(f) {
+  currentFile = f;
+  document.getElementById('chip-name').textContent = f.name;
+  document.getElementById('chip-size').textContent = fmtBytes(f.size);
+  document.getElementById('file-chip').style.display = 'flex';
+  document.getElementById('analyze-btn').disabled = false;
+  clearError();
+}
+
+function fmtBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+  return (b / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+// ================================================================
+// Preset
+// ================================================================
+function applyPreset() {
+  const val = document.getElementById('machine-preset').value;
+  if (!val) return;
+  const [x, y] = val.split(',');
+  document.getElementById('bed-x').value = x;
+  document.getElementById('bed-y').value = y;
+}
+
+// ================================================================
+// Error
+// ================================================================
+function showError(msg) {
+  const el = document.getElementById('error-banner');
+  el.textContent = '⚠ ' + msg;
+  el.classList.add('show');
+}
+function clearError() {
+  document.getElementById('error-banner').classList.remove('show');
+}
+
+// ================================================================
+// Analysis
+// ================================================================
+async function runAnalysis() {
+  if (!currentFile) return;
+  clearError();
+
+  const bedX = parseFloat(document.getElementById('bed-x').value) || 250;
+  const bedY = parseFloat(document.getElementById('bed-y').value) || 250;
+  const gap  = parseFloat(document.getElementById('gap').value)   || 2;
+
+  // Show loading
+  document.getElementById('loading').classList.add('show');
+  document.getElementById('empty-state').style.display   = 'none';
+  document.getElementById('results-content').style.display = 'none';
+  document.getElementById('analyze-btn').disabled = true;
+
+  const fd = new FormData();
+  fd.append('file',  currentFile);
+  fd.append('bed_x', bedX);
+  fd.append('bed_y', bedY);
+  fd.append('gap',   gap);
+
+  try {
+    const res  = await fetch('/api/analyze', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!res.ok) { showError(data.error || 'Analysis failed.'); return; }
+    currentResult = data;
+    renderResults(data);
+  } catch (err) {
+    showError('Network error: ' + err.message);
+  } finally {
+    document.getElementById('loading').classList.remove('show');
+    document.getElementById('analyze-btn').disabled = false;
+  }
+}
+
+// ================================================================
+// Render results
+// ================================================================
+function renderResults(d) {
+  const geo  = d.geometry;
+  const pack = d.packing;
+  const ass  = d.assessment;
+
+  // Assessment banner
+  const icons = { green:'✅', blue:'ℹ️', amber:'⚠️', red:'🔴' };
+  document.getElementById('assessment-banner').className = `assessment ${ass.color}`;
+  document.getElementById('assess-icon').textContent  = icons[ass.color] || 'ℹ️';
+  document.getElementById('assess-level').textContent = ass.level.charAt(0).toUpperCase() + ass.level.slice(1);
+  document.getElementById('assess-msg').textContent   = ass.message;
+
+  // Stats
+  document.getElementById('s-footprint').textContent  = `${fmt(geo.bbox_x)} × ${fmt(geo.bbox_y)}`;
+  document.getElementById('s-height').textContent     = fmt(geo.height_z);
+  document.getElementById('s-hull-area').textContent  = fmt(geo.hull_area);
+  document.getElementById('s-bbox-area').textContent  = fmt(geo.bbox_area);
+  document.getElementById('s-usage-pct').textContent  = ass.single_part_pct + '%';
+  document.getElementById('s-copies').textContent     = pack.total;
+  document.getElementById('s-copies-grid').textContent = `${pack.nx} × ${pack.ny} grid`;
+
+  // Fill bar
+  const pct = Math.min(pack.fill_pct, 100);
+  document.getElementById('fill-bar').style.width       = pct + '%';
+  document.getElementById('fill-bar').className         = `fill-bar ${ass.color}`;
+  document.getElementById('fill-pct-label').textContent = pack.fill_pct + '%';
+  document.getElementById('fill-gap-label').textContent = d.gap;
+
+  // Detail rows
+  document.getElementById('d-filename').textContent   = d.filename;
+  document.getElementById('d-bbox').textContent       = `${fmt(geo.bbox_x)} × ${fmt(geo.bbox_y)} mm`;
+  document.getElementById('d-height').textContent     = `${fmt(geo.height_z)} mm`;
+  document.getElementById('d-hull').textContent       = `${fmt(geo.hull_area)} mm²`;
+  document.getElementById('d-bed').textContent        = `${d.bed.x} × ${d.bed.y} mm`;
+  document.getElementById('d-gap').textContent        = `${d.gap} mm`;
+  document.getElementById('d-grid').textContent       = `${pack.nx} × ${pack.ny}`;
+  document.getElementById('d-total').textContent      = `${pack.total} parts`;
+  document.getElementById('d-fill').textContent       = `${pack.fill_pct}%`;
+  document.getElementById('d-source-note').textContent = geo.source_note;
+
+  // Hull legend visibility
+  document.getElementById('legend-hull').style.display =
+    geo.hull_polygon ? 'flex' : 'none';
+
+  // SVG
+  currentView = 'single';
+  document.getElementById('vbtn-single').classList.add('active');
+  document.getElementById('vbtn-pack').classList.remove('active');
+  renderBedSVG(d, 'single');
+
+  // Show results
+  document.getElementById('results-content').style.display = 'flex';
+  document.getElementById('results-content').style.flexDirection = 'column';
+  document.getElementById('results-content').style.gap = '20px';
+}
+
+function fmt(v) {
+  if (v == null) return '—';
+  return v >= 1000 ? v.toLocaleString('en', {maximumFractionDigits: 0})
+                   : parseFloat(v.toFixed(2)).toString();
+}
+
+// ================================================================
+// View toggle
+// ================================================================
+function setView(v, btn) {
+  currentView = v;
+  document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (currentResult) renderBedSVG(currentResult, v);
+}
+
+// ================================================================
+// SVG bed visualisation
+// ================================================================
+function renderBedSVG(d, view) {
+  const SVG_W = 640;
+  const SVG_H = 480;
+  const PAD   = 40;  // padding inside SVG
+
+  const bedMmX = d.bed.x;
+  const bedMmY = d.bed.y;
+  const geo    = d.geometry;
+  const pack   = d.packing;
+
+  // Scale: fit bed into available drawing area
+  const drawW = SVG_W - 2 * PAD;
+  const drawH = SVG_H - 2 * PAD;
+  const scale = Math.min(drawW / bedMmX, drawH / bedMmY);
+
+  const bedPxW = bedMmX * scale;
+  const bedPxH = bedMmY * scale;
+  const offX   = PAD + (drawW - bedPxW) / 2;
+  const offY   = PAD + (drawH - bedPxH) / 2;
+
+  function mmToSvg(mmx, mmy) {
+    return [offX + mmx * scale, offY + mmy * scale];
+  }
+
+  let parts_html = '';
+
+  if (view === 'single') {
+    // Single part centred on bed
+    const cx = (bedMmX - geo.bbox_x) / 2;
+    const cy = (bedMmY - geo.bbox_y) / 2;
+    const [px, py]   = mmToSvg(cx, cy);
+    const pw         = geo.bbox_x * scale;
+    const ph         = geo.bbox_y * scale;
+
+    // Convex hull (if available)
+    if (geo.hull_polygon && geo.hull_polygon.length > 2) {
+      const pts = geo.hull_polygon.map(p => {
+        const [sx, sy] = mmToSvg(cx + p[0], cy + p[1]);
+        return `${sx},${sy}`;
+      }).join(' ');
+      parts_html += `<polygon points="${pts}"
+        fill="rgba(99,102,241,0.25)" stroke="#6366f1" stroke-width="1.5"
+        stroke-dasharray="4,2"/>`;
+      document.getElementById('legend-hull').style.display = 'flex';
+    }
+
+    // Bounding box
+    parts_html += `
+      <rect x="${px}" y="${py}" width="${pw}" height="${ph}"
+        fill="rgba(59,130,246,0.35)" stroke="#2563eb" stroke-width="2" rx="2"/>
+      <text x="${px + pw/2}" y="${py + ph/2 - 6}" text-anchor="middle"
+        font-size="11" font-weight="600" fill="#1d4ed8"
+        style="pointer-events:none">${fmt(geo.bbox_x)} × ${fmt(geo.bbox_y)} mm</text>
+      <text x="${px + pw/2}" y="${py + ph/2 + 10}" text-anchor="middle"
+        font-size="10" fill="#2563eb" style="pointer-events:none">
+        H: ${fmt(geo.height_z)} mm
+      </text>`;
+
+    // Cross-hair centre dot
+    const [cx2, cy2] = mmToSvg(bedMmX / 2, bedMmY / 2);
+    parts_html += `<circle cx="${cx2}" cy="${cy2}" r="3" fill="none" stroke="#d1d5db" stroke-width="1" stroke-dasharray="3,3"/>`;
+
+  } else {
+    // Grid pack view
+    document.getElementById('legend-hull').style.display = 'none';
+    const MAX_RENDER = 200; // cap for performance
+    const placements = pack.placements.slice(0, MAX_RENDER);
+    placements.forEach((p, i) => {
+      const [px, py] = mmToSvg(p.x, p.y);
+      const pw = geo.bbox_x * scale;
+      const ph = geo.bbox_y * scale;
+      const isFirst = i === 0;
+      parts_html += `
+        <rect x="${px}" y="${py}" width="${pw}" height="${ph}"
+          fill="${isFirst ? 'rgba(37,99,235,0.45)' : 'rgba(59,130,246,0.25)'}"
+          stroke="${isFirst ? '#1d4ed8' : '#93c5fd'}" stroke-width="${isFirst ? 1.5 : 0.8}" rx="1"/>`;
+    });
+    if (pack.placements.length > MAX_RENDER) {
+      const [tx, ty] = mmToSvg(bedMmX / 2, bedMmY / 2);
+      parts_html += `<text x="${tx}" y="${ty}" text-anchor="middle"
+        font-size="11" fill="#6b7280" style="pointer-events:none">
+        (${pack.placements.length - MAX_RENDER} more not shown for performance)
+      </text>`;
+    }
+  }
+
+  // Dimension arrows
+  const [ax1, ay1] = mmToSvg(0, bedMmY);
+  const [ax2, ay2] = mmToSvg(bedMmX, bedMmY);
+  const [ay3, ax3] = [offY - 10, offX - 10];
+
+  const svg = `
+  <svg width="${SVG_W}" height="${SVG_H}" viewBox="0 0 ${SVG_W} ${SVG_H}"
+       xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto">
+    <defs>
+      <pattern id="bg-grid" width="${Math.max(4, scale * 10)}" height="${Math.max(4, scale * 10)}"
+               patternUnits="userSpaceOnUse" x="${offX}" y="${offY}">
+        <path d="M ${Math.max(4, scale*10)} 0 L 0 0 0 ${Math.max(4, scale*10)}"
+              fill="none" stroke="#e5e7eb" stroke-width="0.5"/>
+      </pattern>
+    </defs>
+
+    <!-- Bed background -->
+    <rect x="${offX}" y="${offY}" width="${bedPxW}" height="${bedPxH}"
+      fill="url(#bg-grid)" stroke="#9ca3af" stroke-width="2" rx="3"/>
+    <rect x="${offX}" y="${offY}" width="${bedPxW}" height="${bedPxH}"
+      fill="none" stroke="#4b5563" stroke-width="2" rx="3"/>
+
+    <!-- Parts -->
+    ${parts_html}
+
+    <!-- Bed label -->
+    <text x="${offX + bedPxW/2}" y="${offY - 12}" text-anchor="middle"
+      font-size="12" font-weight="600" fill="#374151">
+      Bed: ${bedMmX} × ${bedMmY} mm
+    </text>
+
+    <!-- Usage annotation (single view) -->
+    ${view === 'single' ? `
+    <text x="${offX + bedPxW - 4}" y="${offY + bedPxH + 20}" text-anchor="end"
+      font-size="10" fill="#6b7280">
+      Single part: ${d.assessment.single_part_pct}% of bed area
+    </text>` : `
+    <text x="${offX + bedPxW - 4}" y="${offY + bedPxH + 20}" text-anchor="end"
+      font-size="10" fill="#6b7280">
+      ${pack.total} parts · ${pack.fill_pct}% fill (${pack.nx}×${pack.ny} grid)
+    </text>`}
+  </svg>`;
+
+  document.getElementById('bed-svg-container').innerHTML = svg;
+}
+</script>
+</body>
+</html>

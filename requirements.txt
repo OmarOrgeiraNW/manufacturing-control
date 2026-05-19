@@ -1,1 +1,4 @@
 flask>=3.0
+numpy>=1.24
+numpy-stl>=3.0
+shapely>=2.0
