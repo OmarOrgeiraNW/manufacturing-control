@@ -4,9 +4,10 @@ import tempfile
 import math
 
 import numpy as np
+import trimesh
+from trimesh.path.polygons import projected as trimesh_projected
 from flask import Flask, render_template, request, jsonify
-from stl import mesh as stl_mesh
-from shapely.geometry import MultiPoint, Polygon
+from shapely.geometry import MultiPoint
 from shapely.ops import unary_union
 
 app = Flask(__name__)
@@ -14,59 +15,20 @@ app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100 MB
 
 ALLOWED_EXT = {".stl", ".step", ".stp"}
 GAP_DEFAULT = 2.0
-LARGE_MESH_THRESHOLD = 150_000
-
-# Axis index mapping: which two indices define the footprint plane
-# and which index is the build height
-AXIS_MAP = {
-    "z": {"fp": (0, 1), "h": 2, "label": "XY",  "axes": ("X", "Y")},
-    "y": {"fp": (0, 2), "h": 1, "label": "XZ",  "axes": ("X", "Z")},
-    "x": {"fp": (1, 2), "h": 0, "label": "YZ",  "axes": ("Y", "Z")},
-}
 
 
 # ---------------------------------------------------------------------------
-# Core projection helpers
+# Polygon -> JSON helper
 # ---------------------------------------------------------------------------
 
-def _project_triangles(triangles_xyz: np.ndarray, ax: dict):
+def _shapely_to_polygon_data(geom, x_min: float, y_min: float):
     """
-    True orthographic footprint: union of all XY-projected triangles.
-    ax: one of the AXIS_MAP values — defines which two coordinates form the
-        footprint plane.
-    Returns a Shapely geometry or None.
-    """
-    i0, i1 = ax["fp"]
-    polys = []
-    for tri in triangles_xyz:
-        pts = [(float(tri[v, i0]), float(tri[v, i1])) for v in range(3)]
-        try:
-            p = Polygon(pts)
-            if p.is_valid and p.area > 1e-10:
-                polys.append(p)
-        except Exception:
-            pass
-    return unary_union(polys) if polys else None
-
-
-def _convex_hull_from_verts(verts_2d: np.ndarray):
-    """Convex hull fallback for large meshes / STEP files."""
-    unique = np.unique(verts_2d, axis=0)
-    if len(unique) < 3:
-        return None
-    try:
-        return MultiPoint(unique).convex_hull
-    except Exception:
-        return None
-
-
-def _shapely_to_polygon_data(geom, min0: float, min1: float) -> dict | None:
-    """
-    Convert a Shapely polygon to the JSON structure the frontend uses.
-    Coordinates are normalised to the footprint bounding-box origin.
+    Convert a Shapely polygon to the JSON structure the frontend expects.
+    Coordinates are returned relative to (x_min, y_min) so the frontend can
+    position the part anywhere on the bed.
     """
     def norm(coords):
-        return [[round(p[0] - min0, 4), round(p[1] - min1, 4)] for p in coords]
+        return [[round(p[0] - x_min, 4), round(p[1] - y_min, 4)] for p in coords]
 
     if geom is None or geom.is_empty:
         return None
@@ -78,83 +40,94 @@ def _shapely_to_polygon_data(geom, min0: float, min1: float) -> dict | None:
             "area":     float(geom.area),
         }
     if geom.geom_type == "MultiPolygon":
+        # Pick the largest polygon for the outline (the user's main part)
         largest = max(geom.geoms, key=lambda g: g.area)
         return {
             "exterior": norm(largest.exterior.coords),
             "holes":    [norm(h.coords) for h in largest.interiors],
-            "area":     float(geom.area),
+            "area":     float(geom.area),   # total of all parts
         }
     return None
 
 
 # ---------------------------------------------------------------------------
-# STL analyser
+# STL analyser — uses trimesh for robust loading + projected outline
 # ---------------------------------------------------------------------------
 
-def analyze_stl(filepath: str, build_axis: str = "z") -> dict:
-    ax = AXIS_MAP[build_axis]
-    i0, i1, ih = ax["fp"][0], ax["fp"][1], ax["h"]
+def analyze_stl(filepath: str) -> dict:
+    """
+    Load any STL file (binary, ASCII, multi-solid, scene) via trimesh,
+    then compute the true XY orthographic projection looking down -Z.
+    """
+    loaded = trimesh.load(filepath, force="mesh")
 
-    your_mesh = stl_mesh.Mesh.from_file(filepath)
-    tris  = your_mesh.vectors          # (N, 3, 3)
-    verts = tris.reshape(-1, 3)
+    if hasattr(loaded, "geometry") and not isinstance(loaded, trimesh.Trimesh):
+        meshes = [g for g in loaded.geometry.values() if isinstance(g, trimesh.Trimesh)]
+        if not meshes:
+            raise ValueError("No mesh geometry found in STL.")
+        mesh = trimesh.util.concatenate(meshes)
+    else:
+        mesh = loaded
 
+    if not isinstance(mesh, trimesh.Trimesh) or len(mesh.vertices) == 0:
+        raise ValueError("STL file contains no triangle data.")
+
+    verts = np.asarray(mesh.vertices)
+    n_tris = len(mesh.triangles)
+    n_verts = len(verts)
+
+    # Bounding box from ALL vertices — guaranteed correct
     mins = verts.min(axis=0)
     maxs = verts.max(axis=0)
+    bbox_x = float(maxs[0] - mins[0])
+    bbox_y = float(maxs[1] - mins[1])
+    height = float(maxs[2] - mins[2])
+    x_min, y_min = float(mins[0]), float(mins[1])
 
-    bbox_fp0  = float(maxs[i0] - mins[i0])   # footprint width
-    bbox_fp1  = float(maxs[i1] - mins[i1])   # footprint depth
-    height    = float(maxs[ih] - mins[ih])   # build height
-    min0, min1 = float(mins[i0]), float(mins[i1])
+    # True XY footprint: trimesh handles silhouette projection robustly,
+    # including concave shapes, holes and complex/disjoint meshes.
+    try:
+        footprint = trimesh_projected(mesh, normal=[0.0, 0.0, 1.0])
+    except Exception:
+        footprint = None
 
-    n_tris = len(tris)
-
-    if n_tris <= LARGE_MESH_THRESHOLD:
-        footprint = _project_triangles(tris, ax)
-        note = (
-            f"True orthographic projection onto the {ax['label']} plane — "
-            f"union of all {n_tris:,} projected triangles. "
-            f"Build axis: {build_axis.upper()}."
+    if footprint is None or footprint.is_empty:
+        # Last-resort fallback so we still return something useful
+        footprint = MultiPoint(verts[:, :2]).convex_hull
+        source_note = (
+            f"Loaded {n_verts:,} vertices · {n_tris:,} triangles. "
+            "Silhouette projection failed; showing convex hull of vertex cloud."
         )
     else:
-        verts_2d = verts[:, [i0, i1]]
-        footprint = _convex_hull_from_verts(verts_2d)
-        note = (
-            f"Mesh has {n_tris:,} triangles — convex-hull approximation used for speed. "
-            f"Build axis: {build_axis.upper()}."
+        source_note = (
+            f"True orthographic projection onto the XY plane (looking down -Z). "
+            f"Loaded {n_verts:,} vertices, {n_tris:,} triangles."
         )
 
-    if footprint is not None and not footprint.is_empty:
-        fp_area = float(footprint.area)
-        tol = max(0.01, math.sqrt(bbox_fp0**2 + bbox_fp1**2) * 0.001)
-        simplified = footprint.simplify(tol, preserve_topology=True)
-        poly_data = _shapely_to_polygon_data(simplified, min0, min1)
-    else:
-        fp_area   = bbox_fp0 * bbox_fp1
-        poly_data = None
+    fp_area = float(footprint.area)
+    # Simplify outline for SVG rendering (tolerance: 0.1% of bbox diagonal)
+    tol = max(0.01, math.sqrt(bbox_x**2 + bbox_y**2) * 0.001)
+    simplified = footprint.simplify(tol, preserve_topology=True)
+    poly_data = _shapely_to_polygon_data(simplified, x_min, y_min)
 
     return {
-        "bbox_x":            round(bbox_fp0, 3),
-        "bbox_y":            round(bbox_fp1, 3),
+        "bbox_x":            round(bbox_x, 3),
+        "bbox_y":            round(bbox_y, 3),
         "height_z":          round(height, 3),
-        "bbox_area":         round(bbox_fp0 * bbox_fp1, 2),
+        "bbox_area":         round(bbox_x * bbox_y, 2),
         "footprint_area":    round(fp_area, 2),
         "footprint_polygon": poly_data,
-        "source_note":       note,
-        "vertex_count":      int(len(verts)),
-        "build_axis":        build_axis.upper(),
-        "fp_axes":           ax["axes"],
+        "source_note":       source_note,
+        "vertex_count":      int(n_verts),
+        "triangle_count":    int(n_tris),
     }
 
 
 # ---------------------------------------------------------------------------
-# STEP analyser
+# STEP analyser — convex hull of extracted ASCII CARTESIAN_POINTs
 # ---------------------------------------------------------------------------
 
-def analyze_step(filepath: str, build_axis: str = "z") -> dict:
-    ax = AXIS_MAP[build_axis]
-    i0, i1, ih = ax["fp"][0], ax["fp"][1], ax["h"]
-
+def analyze_step(filepath: str) -> dict:
     try:
         with open(filepath, "r", errors="ignore") as fh:
             content = fh.read()
@@ -173,7 +146,6 @@ def analyze_step(filepath: str, build_axis: str = "z") -> dict:
     )
     coords = [(float(m.group(1)), float(m.group(2)), float(m.group(3)))
               for m in pattern.finditer(content)]
-
     if not coords:
         raise ValueError(
             "No geometry data found. The file may be empty, corrupt, "
@@ -181,48 +153,43 @@ def analyze_step(filepath: str, build_axis: str = "z") -> dict:
         )
 
     verts = np.array(coords, dtype=float)
-    mins  = verts.min(axis=0)
-    maxs  = verts.max(axis=0)
+    mins, maxs = verts.min(axis=0), verts.max(axis=0)
+    bbox_x = float(maxs[0] - mins[0])
+    bbox_y = float(maxs[1] - mins[1])
+    height = float(maxs[2] - mins[2])
+    x_min, y_min = float(mins[0]), float(mins[1])
 
-    bbox_fp0  = float(maxs[i0] - mins[i0])
-    bbox_fp1  = float(maxs[i1] - mins[i1])
-    height    = float(maxs[ih] - mins[ih])
-    min0, min1 = float(mins[i0]), float(mins[i1])
-
-    verts_2d  = verts[:, [i0, i1]]
-    footprint = _convex_hull_from_verts(verts_2d)
+    unique = np.unique(verts[:, :2], axis=0)
+    footprint = MultiPoint(unique).convex_hull if len(unique) >= 3 else None
 
     if footprint is not None and not footprint.is_empty:
-        fp_area   = float(footprint.area)
-        poly_data = _shapely_to_polygon_data(footprint, min0, min1)
+        fp_area = float(footprint.area)
+        poly_data = _shapely_to_polygon_data(footprint, x_min, y_min)
     else:
-        fp_area   = bbox_fp0 * bbox_fp1
+        fp_area = bbox_x * bbox_y
         poly_data = None
 
     return {
-        "bbox_x":            round(bbox_fp0, 3),
-        "bbox_y":            round(bbox_fp1, 3),
+        "bbox_x":            round(bbox_x, 3),
+        "bbox_y":            round(bbox_y, 3),
         "height_z":          round(height, 3),
-        "bbox_area":         round(bbox_fp0 * bbox_fp1, 2),
+        "bbox_area":         round(bbox_x * bbox_y, 2),
         "footprint_area":    round(fp_area, 2),
         "footprint_polygon": poly_data,
         "source_note":       (
-            f"STEP file: convex hull of extracted vertices onto {ax['label']} plane. "
-            f"Build axis: {build_axis.upper()}. "
-            "Upload an STL for the exact triangle-level projection."
+            f"STEP file: convex hull of {len(verts):,} extracted vertices on the XY plane. "
+            "Upload an STL for the exact triangle-level silhouette."
         ),
         "vertex_count":      int(len(verts)),
-        "build_axis":        build_axis.upper(),
-        "fp_axes":           ax["axes"],
+        "triangle_count":    0,
     }
 
 
 # ---------------------------------------------------------------------------
-# Packing calculator
+# Packing + assessment
 # ---------------------------------------------------------------------------
 
-def packing_estimate(bbox_x: float, bbox_y: float,
-                     bed_x: float, bed_y: float, gap: float) -> dict:
+def packing_estimate(bbox_x, bbox_y, bed_x, bed_y, gap):
     step_x = bbox_x + gap
     step_y = bbox_y + gap
     nx = max(0, math.floor(bed_x / step_x)) if step_x > 0 else 0
@@ -230,37 +197,24 @@ def packing_estimate(bbox_x: float, bbox_y: float,
     total = nx * ny
 
     used_area = total * bbox_x * bbox_y
-    bed_area  = bed_x * bed_y
-    fill_pct  = round(used_area / bed_area * 100, 1) if bed_area > 0 else 0
-
-    placements = [
-        {"x": col * step_x, "y": row * step_y}
-        for row in range(ny)
-        for col in range(nx)
-    ]
-    return {"nx": nx, "ny": ny, "total": total, "fill_pct": fill_pct,
-            "placements": placements}
+    bed_area = bed_x * bed_y
+    fill_pct = round(used_area / bed_area * 100, 1) if bed_area > 0 else 0
+    placements = [{"x": c * step_x, "y": r * step_y} for r in range(ny) for c in range(nx)]
+    return {"nx": nx, "ny": ny, "total": total, "fill_pct": fill_pct, "placements": placements}
 
 
-# ---------------------------------------------------------------------------
-# Bed fill assessment
-# ---------------------------------------------------------------------------
-
-def bed_assessment(footprint_area: float, bed_x: float, bed_y: float) -> dict:
-    bed_area   = bed_x * bed_y
-    single_pct = round(footprint_area / bed_area * 100, 1) if bed_area > 0 else 0
-
-    if single_pct >= 80:
-        level, message, color = "full",     "Bed is essentially full with this single part.", "red"
-    elif single_pct >= 50:
-        level, message, color = "crowded",  "More than half the bed is occupied. Limited room for additional parts.", "amber"
-    elif single_pct >= 20:
-        level, message, color = "moderate", "Reasonable space available. More parts can be added.", "blue"
+def bed_assessment(fp_area, bed_x, bed_y):
+    bed_area = bed_x * bed_y
+    pct = round(fp_area / bed_area * 100, 1) if bed_area > 0 else 0
+    if pct >= 80:
+        level, msg, color = "full", "Bed is essentially full with this single part.", "red"
+    elif pct >= 50:
+        level, msg, color = "crowded", "More than half the bed is occupied. Limited room for additional parts.", "amber"
+    elif pct >= 20:
+        level, msg, color = "moderate", "Reasonable space available. More parts can be added.", "blue"
     else:
-        level, message, color = "spacious", "Plenty of bed space remaining. Good candidate for batch printing.", "green"
-
-    return {"level": level, "message": message, "color": color,
-            "single_part_pct": single_pct}
+        level, msg, color = "spacious", "Plenty of bed space remaining. Good candidate for batch printing.", "green"
+    return {"level": level, "message": msg, "color": color, "single_part_pct": pct}
 
 
 # ---------------------------------------------------------------------------
@@ -284,21 +238,16 @@ def api_analyze():
     if ext not in ALLOWED_EXT:
         return jsonify({"error": f"Unsupported format '{ext}'. Upload .stl, .step, or .stp."}), 400
 
-    bed_x      = float(request.form.get("bed_x", 250))
-    bed_y      = float(request.form.get("bed_y", 250))
-    gap        = float(request.form.get("gap", GAP_DEFAULT))
-    build_axis = request.form.get("build_axis", "z").lower()
-    if build_axis not in AXIS_MAP:
-        build_axis = "z"
+    bed_x = float(request.form.get("bed_x", 250))
+    bed_y = float(request.form.get("bed_y", 250))
+    gap   = float(request.form.get("gap",   GAP_DEFAULT))
 
     with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
         f.save(tmp.name)
         tmp_path = tmp.name
 
     try:
-        geo = (analyze_stl(tmp_path, build_axis)
-               if ext == ".stl"
-               else analyze_step(tmp_path, build_axis))
+        geo = analyze_stl(tmp_path) if ext == ".stl" else analyze_step(tmp_path)
     except Exception as exc:
         return jsonify({"error": str(exc)}), 422
     finally:
@@ -307,7 +256,7 @@ def api_analyze():
         except FileNotFoundError:
             pass
 
-    pack       = packing_estimate(geo["bbox_x"], geo["bbox_y"], bed_x, bed_y, gap)
+    pack = packing_estimate(geo["bbox_x"], geo["bbox_y"], bed_x, bed_y, gap)
     assessment = bed_assessment(geo["footprint_area"], bed_x, bed_y)
 
     return jsonify({

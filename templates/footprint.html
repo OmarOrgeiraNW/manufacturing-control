@@ -313,27 +313,9 @@ main {
       </div>
     </div>
 
-    <!-- Part orientation -->
-    <div class="card">
-      <div class="card-title">2 — Part Orientation</div>
-      <div class="fg">
-        <label>Build direction (vertical / up axis)</label>
-        <select id="build-axis">
-          <option value="z" selected>Z — standard LPBF / Z-up export</option>
-          <option value="y">Y — Y-up export (Fusion 360 default)</option>
-          <option value="x">X — X-up export (uncommon)</option>
-        </select>
-        <div class="fg-hint">
-          The footprint is the orthographic projection onto the plane
-          <strong>perpendicular</strong> to this axis — what you would see
-          looking straight down the build direction.
-        </div>
-      </div>
-    </div>
-
     <!-- Bed settings -->
     <div class="card">
-      <div class="card-title">3 — Bed Configuration</div>
+      <div class="card-title">2 — Bed Configuration</div>
 
       <div class="fg">
         <label>Preset machine</label>
@@ -369,7 +351,7 @@ main {
     <!-- Analyze -->
     <div class="card" style="padding:14px">
       <button class="btn btn-primary" id="analyze-btn" onclick="runAnalysis()" disabled>
-        4 — Analyze Footprint
+        3 — Analyze Footprint
       </button>
       <div id="error-banner" class="error-banner" style="margin-top:10px"></div>
     </div>
@@ -378,23 +360,18 @@ main {
     <div class="card" style="font-size:.78rem;color:var(--gray-5);line-height:1.6">
       <div class="card-title">How it works</div>
       <p style="margin-bottom:8px">
-        Upload a part that is already <strong>oriented for printing</strong>.
-        Select the <strong>build direction</strong> — the axis that is vertical
-        in your LPBF machine. The tool then projects all geometry
-        <em>perpendicular</em> to that axis (i.e. looking straight down the
-        build direction) to compute the exact bed footprint.
+        Upload a part already oriented for printing — the
+        <strong>build direction is Z</strong> (vertical). The tool computes
+        the true orthographic silhouette of the whole 3D body looking down
+        the −Z axis, exactly what occupies the build plate.
       </p>
       <p style="margin-bottom:8px">
-        <strong>Not sure which axis?</strong> Most LPBF software (EOS, SLM, Renishaw) uses
-        Z-up. Fusion 360 and some tools export with Y-up by default.
-        If the footprint looks like the wrong cross-section, try switching axis.
-      </p>
-      <p style="margin-bottom:8px">
-        <strong>STL</strong> — true projection via union of all triangles.
+        <strong>STL</strong> — exact silhouette via trimesh (handles
+        binary, ASCII and multi-solid files).
       </p>
       <p>
         <strong>STEP</strong> — convex hull of extracted vertices.
-        For exact results export an STL.
+        For maximum accuracy upload an STL.
       </p>
     </div>
 
@@ -620,10 +597,9 @@ async function runAnalysis() {
   if (!currentFile) return;
   clearError();
 
-  const bedX      = parseFloat(document.getElementById('bed-x').value) || 250;
-  const bedY      = parseFloat(document.getElementById('bed-y').value) || 250;
-  const gap       = parseFloat(document.getElementById('gap').value)   || 2;
-  const buildAxis = document.getElementById('build-axis').value || 'z';
+  const bedX = parseFloat(document.getElementById('bed-x').value) || 250;
+  const bedY = parseFloat(document.getElementById('bed-y').value) || 250;
+  const gap  = parseFloat(document.getElementById('gap').value)   || 2;
 
   // Show loading
   document.getElementById('loading').classList.add('show');
@@ -631,11 +607,10 @@ async function runAnalysis() {
   document.getElementById('analyze-btn').disabled = true;
 
   const fd = new FormData();
-  fd.append('file',       currentFile);
-  fd.append('bed_x',      bedX);
-  fd.append('bed_y',      bedY);
-  fd.append('gap',        gap);
-  fd.append('build_axis', buildAxis);
+  fd.append('file',  currentFile);
+  fd.append('bed_x', bedX);
+  fd.append('bed_y', bedY);
+  fd.append('gap',   gap);
 
   try {
     const res  = await fetch('/api/analyze', { method: 'POST', body: fd });
@@ -666,17 +641,16 @@ function renderResults(d) {
   document.getElementById('assess-level').textContent = ass.level.charAt(0).toUpperCase() + ass.level.slice(1);
   document.getElementById('assess-msg').textContent   = ass.message;
 
-  // Stats — update axis labels dynamically
-  const [fpA, fpB] = geo.fp_axes;  // e.g. ["X","Y"], ["X","Z"], ["Y","Z"]
-  document.getElementById('s-footprint').textContent  = `${fmt(geo.bbox_x)} × ${fmt(geo.bbox_y)}`;
-  document.getElementById('s-footprint-unit').textContent = `${fpA} × ${fpB} mm`;
-  document.getElementById('s-height').textContent     = fmt(geo.height_z);
-  document.getElementById('s-height-unit').textContent = `mm (${geo.build_axis} axis)`;
-  document.getElementById('s-hull-area').textContent  = fmt(geo.footprint_area);
-  document.getElementById('s-bbox-area').textContent  = fmt(geo.bbox_area);
-  document.getElementById('s-usage-pct').textContent  = ass.single_part_pct + '%';
-  document.getElementById('s-copies').textContent     = pack.total;
-  document.getElementById('s-copies-grid').textContent = `${pack.nx} × ${pack.ny} grid`;
+  // Stats
+  document.getElementById('s-footprint').textContent       = `${fmt(geo.bbox_x)} × ${fmt(geo.bbox_y)}`;
+  document.getElementById('s-footprint-unit').textContent  = 'X × Y mm';
+  document.getElementById('s-height').textContent          = fmt(geo.height_z);
+  document.getElementById('s-height-unit').textContent     = 'mm (Z axis)';
+  document.getElementById('s-hull-area').textContent       = fmt(geo.footprint_area);
+  document.getElementById('s-bbox-area').textContent       = fmt(geo.bbox_area);
+  document.getElementById('s-usage-pct').textContent       = ass.single_part_pct + '%';
+  document.getElementById('s-copies').textContent          = pack.total;
+  document.getElementById('s-copies-grid').textContent     = `${pack.nx} × ${pack.ny} grid`;
 
   // Fill bar
   const pct = Math.min(pack.fill_pct, 100);
@@ -687,8 +661,8 @@ function renderResults(d) {
 
   // Detail rows
   document.getElementById('d-filename').textContent   = d.filename;
-  document.getElementById('d-bbox').textContent       = `${fmt(geo.bbox_x)} × ${fmt(geo.bbox_y)} mm  (${fpA} × ${fpB})`;
-  document.getElementById('d-height').textContent     = `${fmt(geo.height_z)} mm  (${geo.build_axis})`;
+  document.getElementById('d-bbox').textContent       = `${fmt(geo.bbox_x)} × ${fmt(geo.bbox_y)} mm`;
+  document.getElementById('d-height').textContent     = `${fmt(geo.height_z)} mm`;
   document.getElementById('d-hull').textContent       = `${fmt(geo.footprint_area)} mm²`;
   document.getElementById('d-bed').textContent        = `${d.bed.x} × ${d.bed.y} mm`;
   document.getElementById('d-gap').textContent        = `${d.gap} mm`;
