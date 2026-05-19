@@ -14,57 +14,59 @@ app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100 MB
 
 ALLOWED_EXT = {".stl", ".step", ".stp"}
 GAP_DEFAULT = 2.0
-# Above this triangle count use convex-hull fallback for speed
 LARGE_MESH_THRESHOLD = 150_000
 
+# Axis index mapping: which two indices define the footprint plane
+# and which index is the build height
+AXIS_MAP = {
+    "z": {"fp": (0, 1), "h": 2, "label": "XY",  "axes": ("X", "Y")},
+    "y": {"fp": (0, 2), "h": 1, "label": "XZ",  "axes": ("X", "Z")},
+    "x": {"fp": (1, 2), "h": 0, "label": "YZ",  "axes": ("Y", "Z")},
+}
+
 
 # ---------------------------------------------------------------------------
-# Core projection: true orthographic footprint
+# Core projection helpers
 # ---------------------------------------------------------------------------
 
-def _project_triangles_to_footprint(triangles_xyz: np.ndarray):
+def _project_triangles(triangles_xyz: np.ndarray, ax: dict):
     """
-    True orthographic footprint: union of all XY projections of every mesh triangle.
-
-    triangles_xyz: shape (N, 3, 3)  — N triangles, 3 vertices, XYZ.
-
-    Vertical faces (zero projected area) are silently skipped.
-    Returns a Shapely geometry (Polygon or MultiPolygon), or None if nothing projected.
+    True orthographic footprint: union of all XY-projected triangles.
+    ax: one of the AXIS_MAP values — defines which two coordinates form the
+        footprint plane.
+    Returns a Shapely geometry or None.
     """
+    i0, i1 = ax["fp"]
     polys = []
     for tri in triangles_xyz:
-        xy = [(float(tri[0, 0]), float(tri[0, 1])),
-              (float(tri[1, 0]), float(tri[1, 1])),
-              (float(tri[2, 0]), float(tri[2, 1]))]
+        pts = [(float(tri[v, i0]), float(tri[v, i1])) for v in range(3)]
         try:
-            p = Polygon(xy)
-            # Skip degenerate / nearly-vertical faces
+            p = Polygon(pts)
             if p.is_valid and p.area > 1e-10:
                 polys.append(p)
         except Exception:
             pass
-
-    if not polys:
-        return None
-    return unary_union(polys)
+    return unary_union(polys) if polys else None
 
 
-def _convex_hull_footprint(verts_xy: np.ndarray):
-    """Fallback: convex hull of projected vertices (for large meshes / STEP)."""
-    unique = np.unique(verts_xy, axis=0)
+def _convex_hull_from_verts(verts_2d: np.ndarray):
+    """Convex hull fallback for large meshes / STEP files."""
+    unique = np.unique(verts_2d, axis=0)
     if len(unique) < 3:
         return None
-    return MultiPoint(unique).convex_hull
+    try:
+        return MultiPoint(unique).convex_hull
+    except Exception:
+        return None
 
 
-def _shapely_to_polygon_data(geom, x_min: float, y_min: float) -> dict:
+def _shapely_to_polygon_data(geom, min0: float, min1: float) -> dict | None:
     """
-    Convert a Shapely geometry to the JSON structure the frontend expects.
-    Returns {"exterior": [[x,y],...], "holes": [[[x,y],...], ...], "area": float}.
-    Coordinates are normalised relative to the part's bounding-box origin.
+    Convert a Shapely polygon to the JSON structure the frontend uses.
+    Coordinates are normalised to the footprint bounding-box origin.
     """
     def norm(coords):
-        return [[round(p[0] - x_min, 4), round(p[1] - y_min, 4)] for p in coords]
+        return [[round(p[0] - min0, 4), round(p[1] - min1, 4)] for p in coords]
 
     if geom is None or geom.is_empty:
         return None
@@ -76,12 +78,11 @@ def _shapely_to_polygon_data(geom, x_min: float, y_min: float) -> dict:
             "area":     float(geom.area),
         }
     if geom.geom_type == "MultiPolygon":
-        # Return the largest component — adequate for LPBF parts
         largest = max(geom.geoms, key=lambda g: g.area)
         return {
             "exterior": norm(largest.exterior.coords),
             "holes":    [norm(h.coords) for h in largest.interiors],
-            "area":     float(geom.area),   # total, including smaller pieces
+            "area":     float(geom.area),
         }
     return None
 
@@ -90,53 +91,59 @@ def _shapely_to_polygon_data(geom, x_min: float, y_min: float) -> dict:
 # STL analyser
 # ---------------------------------------------------------------------------
 
-def analyze_stl(filepath: str) -> dict:
+def analyze_stl(filepath: str, build_axis: str = "z") -> dict:
+    ax = AXIS_MAP[build_axis]
+    i0, i1, ih = ax["fp"][0], ax["fp"][1], ax["h"]
+
     your_mesh = stl_mesh.Mesh.from_file(filepath)
-    # shape: (N_triangles, 3_vertices, 3_xyz)
-    tris = your_mesh.vectors
+    tris  = your_mesh.vectors          # (N, 3, 3)
     verts = tris.reshape(-1, 3)
 
-    x_min, y_min, z_min = verts.min(axis=0)
-    x_max, y_max, z_max = verts.max(axis=0)
-    bbox_x   = float(x_max - x_min)
-    bbox_y   = float(y_max - y_min)
-    height_z = float(z_max - z_min)
+    mins = verts.min(axis=0)
+    maxs = verts.max(axis=0)
+
+    bbox_fp0  = float(maxs[i0] - mins[i0])   # footprint width
+    bbox_fp1  = float(maxs[i1] - mins[i1])   # footprint depth
+    height    = float(maxs[ih] - mins[ih])   # build height
+    min0, min1 = float(mins[i0]), float(mins[i1])
 
     n_tris = len(tris)
 
     if n_tris <= LARGE_MESH_THRESHOLD:
-        footprint = _project_triangles_to_footprint(tris)
+        footprint = _project_triangles(tris, ax)
         note = (
-            f"True orthographic projection — union of all {n_tris:,} "
-            "XY-projected triangles. Holes are shown where the part is hollow."
+            f"True orthographic projection onto the {ax['label']} plane — "
+            f"union of all {n_tris:,} projected triangles. "
+            f"Build axis: {build_axis.upper()}."
         )
     else:
-        # Large mesh: convex hull is fast and good enough for footprint bounds
-        footprint = _convex_hull_footprint(verts[:, :2])
+        verts_2d = verts[:, [i0, i1]]
+        footprint = _convex_hull_from_verts(verts_2d)
         note = (
-            f"Mesh has {n_tris:,} triangles — convex-hull approximation used for "
-            "speed. Export a simplified STL for the exact projection."
+            f"Mesh has {n_tris:,} triangles — convex-hull approximation used for speed. "
+            f"Build axis: {build_axis.upper()}."
         )
 
     if footprint is not None and not footprint.is_empty:
-        footprint_area = float(footprint.area)
-        # Simplify polygon outline for SVG (tolerance: 0.1% of bbox diagonal)
-        tol = max(0.01, math.sqrt(bbox_x ** 2 + bbox_y ** 2) * 0.001)
+        fp_area = float(footprint.area)
+        tol = max(0.01, math.sqrt(bbox_fp0**2 + bbox_fp1**2) * 0.001)
         simplified = footprint.simplify(tol, preserve_topology=True)
-        poly_data = _shapely_to_polygon_data(simplified, x_min, y_min)
+        poly_data = _shapely_to_polygon_data(simplified, min0, min1)
     else:
-        footprint_area = bbox_x * bbox_y
+        fp_area   = bbox_fp0 * bbox_fp1
         poly_data = None
 
     return {
-        "bbox_x":        round(bbox_x, 3),
-        "bbox_y":        round(bbox_y, 3),
-        "height_z":      round(height_z, 3),
-        "bbox_area":     round(bbox_x * bbox_y, 2),
-        "footprint_area": round(footprint_area, 2),
+        "bbox_x":            round(bbox_fp0, 3),
+        "bbox_y":            round(bbox_fp1, 3),
+        "height_z":          round(height, 3),
+        "bbox_area":         round(bbox_fp0 * bbox_fp1, 2),
+        "footprint_area":    round(fp_area, 2),
         "footprint_polygon": poly_data,
-        "source_note":   note,
-        "vertex_count":  int(len(verts)),
+        "source_note":       note,
+        "vertex_count":      int(len(verts)),
+        "build_axis":        build_axis.upper(),
+        "fp_axes":           ax["axes"],
     }
 
 
@@ -144,12 +151,10 @@ def analyze_stl(filepath: str) -> dict:
 # STEP analyser
 # ---------------------------------------------------------------------------
 
-def analyze_step(filepath: str) -> dict:
-    """
-    Extract CARTESIAN_POINT data from an ASCII STEP file (AP203/AP214/AP242).
-    Computes convex hull of the projected vertex cloud — best possible without
-    full BREP tessellation. For maximum accuracy, upload an STL export.
-    """
+def analyze_step(filepath: str, build_axis: str = "z") -> dict:
+    ax = AXIS_MAP[build_axis]
+    i0, i1, ih = ax["fp"][0], ax["fp"][1], ax["h"]
+
     try:
         with open(filepath, "r", errors="ignore") as fh:
             content = fh.read()
@@ -157,9 +162,7 @@ def analyze_step(filepath: str) -> dict:
         raise ValueError(f"Cannot read STEP file: {exc}") from exc
 
     if "BINARY" in content[:200].upper():
-        raise ValueError(
-            "Binary STEP files are not supported. Please export as ASCII STEP."
-        )
+        raise ValueError("Binary STEP files are not supported. Please export as ASCII STEP.")
 
     pattern = re.compile(
         r"CARTESIAN_POINT\s*\([^,]*,\s*\(\s*"
@@ -168,10 +171,9 @@ def analyze_step(filepath: str) -> dict:
         r"([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s*\)",
         re.IGNORECASE,
     )
-    coords = [
-        (float(m.group(1)), float(m.group(2)), float(m.group(3)))
-        for m in pattern.finditer(content)
-    ]
+    coords = [(float(m.group(1)), float(m.group(2)), float(m.group(3)))
+              for m in pattern.finditer(content)]
+
     if not coords:
         raise ValueError(
             "No geometry data found. The file may be empty, corrupt, "
@@ -179,35 +181,39 @@ def analyze_step(filepath: str) -> dict:
         )
 
     verts = np.array(coords, dtype=float)
-    x_min, y_min, z_min = verts.min(axis=0)
-    x_max, y_max, z_max = verts.max(axis=0)
-    bbox_x   = float(x_max - x_min)
-    bbox_y   = float(y_max - y_min)
-    height_z = float(z_max - z_min)
+    mins  = verts.min(axis=0)
+    maxs  = verts.max(axis=0)
 
-    footprint = _convex_hull_footprint(verts[:, :2])
+    bbox_fp0  = float(maxs[i0] - mins[i0])
+    bbox_fp1  = float(maxs[i1] - mins[i1])
+    height    = float(maxs[ih] - mins[ih])
+    min0, min1 = float(mins[i0]), float(mins[i1])
+
+    verts_2d  = verts[:, [i0, i1]]
+    footprint = _convex_hull_from_verts(verts_2d)
 
     if footprint is not None and not footprint.is_empty:
-        footprint_area = float(footprint.area)
-        poly_data = _shapely_to_polygon_data(footprint, x_min, y_min)
+        fp_area   = float(footprint.area)
+        poly_data = _shapely_to_polygon_data(footprint, min0, min1)
     else:
-        footprint_area = bbox_x * bbox_y
+        fp_area   = bbox_fp0 * bbox_fp1
         poly_data = None
 
-    note = (
-        "STEP file: convex hull of extracted vertex cloud. "
-        "Triangle-level projection is not available without full BREP tessellation — "
-        "upload an STL for the exact footprint."
-    )
     return {
-        "bbox_x":        round(bbox_x, 3),
-        "bbox_y":        round(bbox_y, 3),
-        "height_z":      round(height_z, 3),
-        "bbox_area":     round(bbox_x * bbox_y, 2),
-        "footprint_area": round(footprint_area, 2),
+        "bbox_x":            round(bbox_fp0, 3),
+        "bbox_y":            round(bbox_fp1, 3),
+        "height_z":          round(height, 3),
+        "bbox_area":         round(bbox_fp0 * bbox_fp1, 2),
+        "footprint_area":    round(fp_area, 2),
         "footprint_polygon": poly_data,
-        "source_note":   note,
-        "vertex_count":  int(len(verts)),
+        "source_note":       (
+            f"STEP file: convex hull of extracted vertices onto {ax['label']} plane. "
+            f"Build axis: {build_axis.upper()}. "
+            "Upload an STL for the exact triangle-level projection."
+        ),
+        "vertex_count":      int(len(verts)),
+        "build_axis":        build_axis.upper(),
+        "fp_axes":           ax["axes"],
     }
 
 
@@ -217,7 +223,6 @@ def analyze_step(filepath: str) -> dict:
 
 def packing_estimate(bbox_x: float, bbox_y: float,
                      bed_x: float, bed_y: float, gap: float) -> dict:
-    """Rectangular grid packing using bounding-box dimensions + gap."""
     step_x = bbox_x + gap
     step_y = bbox_y + gap
     nx = max(0, math.floor(bed_x / step_x)) if step_x > 0 else 0
@@ -279,16 +284,21 @@ def api_analyze():
     if ext not in ALLOWED_EXT:
         return jsonify({"error": f"Unsupported format '{ext}'. Upload .stl, .step, or .stp."}), 400
 
-    bed_x = float(request.form.get("bed_x", 250))
-    bed_y = float(request.form.get("bed_y", 250))
-    gap   = float(request.form.get("gap",   GAP_DEFAULT))
+    bed_x      = float(request.form.get("bed_x", 250))
+    bed_y      = float(request.form.get("bed_y", 250))
+    gap        = float(request.form.get("gap", GAP_DEFAULT))
+    build_axis = request.form.get("build_axis", "z").lower()
+    if build_axis not in AXIS_MAP:
+        build_axis = "z"
 
     with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
         f.save(tmp.name)
         tmp_path = tmp.name
 
     try:
-        geo = analyze_stl(tmp_path) if ext == ".stl" else analyze_step(tmp_path)
+        geo = (analyze_stl(tmp_path, build_axis)
+               if ext == ".stl"
+               else analyze_step(tmp_path, build_axis))
     except Exception as exc:
         return jsonify({"error": str(exc)}), 422
     finally:
