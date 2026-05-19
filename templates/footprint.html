@@ -383,22 +383,40 @@ main {
       <span>Analysing geometry…</span>
     </div>
 
-    <!-- Initial empty state (shown before first analysis) -->
-    <div id="empty-state">
-      <div class="bed-wrap">
-        <div class="bed-header"><h2>Bed Visualisation</h2></div>
-        <div id="bed-svg-container">
-          <div class="bed-empty">
-            <div class="bed-empty-icon">🖨️</div>
-            <div class="bed-empty-text">No file analysed yet</div>
-            <div class="bed-empty-sub">Upload a part file and click Analyse Footprint</div>
-          </div>
+    <!-- Bed visualisation — always visible, one single ID -->
+    <div class="bed-wrap">
+      <div class="bed-header">
+        <h2>Bed Visualisation</h2>
+        <div class="view-toggle" id="view-toggle" style="display:none">
+          <button class="view-btn active" id="vbtn-single" onclick="setView('single',this)">Single part</button>
+          <button class="view-btn"        id="vbtn-pack"   onclick="setView('pack',this)">Grid pack</button>
+        </div>
+      </div>
+      <div id="bed-svg-container" style="min-height:360px">
+        <div class="bed-empty">
+          <div class="bed-empty-icon">🖨️</div>
+          <div class="bed-empty-text">No file analysed yet</div>
+          <div class="bed-empty-sub">Upload a part file and click Analyse Footprint</div>
+        </div>
+      </div>
+      <div class="legend" id="bed-legend" style="display:none">
+        <div class="legend-item">
+          <div class="legend-swatch" style="background:#3b82f6;border:1px solid #1d4ed8"></div>
+          <span>Part footprint (bounding box)</span>
+        </div>
+        <div class="legend-item" id="legend-hull" style="display:none">
+          <div class="legend-swatch" style="background:rgba(99,102,241,.35);border:1px solid #6366f1"></div>
+          <span>Convex hull</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-swatch" style="background:#f0fdf4;border:1px dashed #16a34a"></div>
+          <span>Available bed area</span>
         </div>
       </div>
     </div>
 
-    <!-- Results (hidden until first successful analysis) -->
-    <div id="results-content" style="display:none">
+    <!-- Stats + details — hidden until first successful analysis -->
+    <div id="results-content" style="display:none;flex-direction:column;gap:20px">
 
       <!-- Assessment banner -->
       <div id="assessment-banner" class="assessment green">
@@ -455,32 +473,6 @@ main {
         <div style="font-size:.72rem;color:var(--gray-5);margin-top:4px">
           Actual fill using rectangular grid packing with <span id="fill-gap-label">—</span> mm gap.
           Convex-hull fill rate for a single part shown in stats above.
-        </div>
-      </div>
-
-      <!-- Bed visualisation -->
-      <div class="bed-wrap">
-        <div class="bed-header">
-          <h2>Bed Visualisation</h2>
-          <div class="view-toggle">
-            <button class="view-btn active" id="vbtn-single" onclick="setView('single',this)">Single part</button>
-            <button class="view-btn"        id="vbtn-pack"   onclick="setView('pack',this)">Grid pack</button>
-          </div>
-        </div>
-        <div id="bed-svg-container" style="min-height:360px"></div>
-        <div class="legend">
-          <div class="legend-item">
-            <div class="legend-swatch" style="background:#3b82f6;border:1px solid #1d4ed8"></div>
-            <span>Part footprint (bounding box)</span>
-          </div>
-          <div class="legend-item" id="legend-hull" style="display:none">
-            <div class="legend-swatch" style="background:rgba(99,102,241,.35);border:1px solid #6366f1"></div>
-            <span>Convex hull</span>
-          </div>
-          <div class="legend-item">
-            <div class="legend-swatch" style="background:#f0fdf4;border:1px dashed #16a34a"></div>
-            <span>Available bed area</span>
-          </div>
         </div>
       </div>
 
@@ -608,7 +600,6 @@ async function runAnalysis() {
 
   // Show loading
   document.getElementById('loading').classList.add('show');
-  document.getElementById('empty-state').style.display   = 'none';
   document.getElementById('results-content').style.display = 'none';
   document.getElementById('analyze-btn').disabled = true;
 
@@ -679,16 +670,18 @@ function renderResults(d) {
   document.getElementById('legend-hull').style.display =
     geo.hull_polygon ? 'flex' : 'none';
 
-  // SVG
+  // SVG — render into the single bed-svg-container
   currentView = 'single';
   document.getElementById('vbtn-single').classList.add('active');
   document.getElementById('vbtn-pack').classList.remove('active');
   renderBedSVG(d, 'single');
 
-  // Show results
+  // Reveal view toggle + legend now that we have geometry
+  document.getElementById('view-toggle').style.display = 'flex';
+  document.getElementById('bed-legend').style.display  = 'flex';
+
+  // Show stats / details panel
   document.getElementById('results-content').style.display = 'flex';
-  document.getElementById('results-content').style.flexDirection = 'column';
-  document.getElementById('results-content').style.gap = '20px';
 }
 
 function fmt(v) {
