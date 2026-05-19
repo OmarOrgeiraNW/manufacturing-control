@@ -59,6 +59,7 @@ def init_db():
             order_id         INTEGER NOT NULL REFERENCES orders(id),
             status           TEXT    NOT NULL DEFAULT 'queued',
             estimated_hours  REAL    DEFAULT 0,
+            sort_order       INTEGER NOT NULL DEFAULT 1000,
             started_at       TEXT,
             completed_at     TEXT,
             notes            TEXT,
@@ -66,6 +67,12 @@ def init_db():
         );
     """)
     conn.commit()
+    # Migration: add sort_order to existing databases that pre-date this column
+    try:
+        conn.execute("ALTER TABLE jobs ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 1000")
+        conn.commit()
+    except Exception:
+        pass
     conn.close()
 
 
@@ -94,11 +101,11 @@ def machine_util_hours(conn, machine_id, days=30):
 
 def machine_queued_jobs(conn, machine_id):
     rows = conn.execute(
-        """SELECT j.id, j.status, j.estimated_hours, j.created_at,
+        """SELECT j.id, j.status, j.estimated_hours, j.sort_order, j.created_at,
                   o.client_name, o.reference
            FROM jobs j JOIN orders o ON j.order_id = o.id
            WHERE j.machine_id = ? AND j.status IN ('queued','printing')
-           ORDER BY j.created_at""",
+           ORDER BY j.sort_order, j.created_at""",
         (machine_id,),
     ).fetchall()
     return [dict(r) for r in rows]
@@ -344,6 +351,24 @@ def api_assign():
             return jsonify({"error": "Order is already assigned to a machine"}), 400
 
         machine = dict(conn.execute("SELECT * FROM machines WHERE id = ?", (machine_id,)).fetchone())
+        priority = bool(data.get("priority"))
+
+        # Compute sort_order: priority jobs jump to front of the queued list
+        if priority:
+            # Find the lowest sort_order among currently queued (non-printing) jobs
+            row = conn.execute(
+                "SELECT COALESCE(MIN(sort_order), 1000) FROM jobs "
+                "WHERE machine_id = ? AND status = 'queued'",
+                (machine_id,),
+            ).fetchone()
+            sort_order = max(0, row[0] - 1)
+        else:
+            row = conn.execute(
+                "SELECT COALESCE(MAX(sort_order), 0) FROM jobs "
+                "WHERE machine_id = ? AND status IN ('queued','printing')",
+                (machine_id,),
+            ).fetchone()
+            sort_order = row[0] + 1
 
         # If machine is idle, start printing immediately; otherwise queue it
         if machine["status"] == "idle":
@@ -357,8 +382,9 @@ def api_assign():
             conn.execute("UPDATE orders SET status = 'scheduled' WHERE id = ?", (order_id,))
 
         conn.execute(
-            "INSERT INTO jobs (machine_id, order_id, status, estimated_hours, started_at, notes) VALUES (?,?,?,?,?,?)",
-            (machine_id, order_id, job_status, est_hours, started_at, data.get("notes", "")),
+            "INSERT INTO jobs (machine_id, order_id, status, estimated_hours, sort_order, started_at, notes) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (machine_id, order_id, job_status, est_hours, sort_order, started_at, data.get("notes", "")),
         )
         conn.commit()
         return jsonify({"success": True, "job_status": job_status})
@@ -496,7 +522,7 @@ def api_gantt():
                    WHERE j.machine_id = ? AND j.status IN ('printing','queued')
                    ORDER BY
                      CASE j.status WHEN 'printing' THEN 0 ELSE 1 END,
-                     j.created_at""",
+                     j.sort_order, j.created_at""",
                 (m["id"],),
             ).fetchall()]
 
@@ -531,6 +557,68 @@ def api_gantt():
         ).fetchall()]
 
         return jsonify({"machines": result, "pending": pending, "now": now.isoformat()})
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Routes — job reassignment (move to a different machine)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/jobs/<int:job_id>/reassign", methods=["PUT"])
+def api_job_reassign(job_id):
+    conn = get_db()
+    try:
+        data = request.get_json()
+        new_machine_id = int(data["machine_id"])
+
+        row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        if not row:
+            return jsonify({"error": "Job not found"}), 404
+        job = dict(row)
+        old_machine_id = job["machine_id"]
+        order_id = job["order_id"]
+
+        if new_machine_id == old_machine_id:
+            return jsonify({"success": True})
+
+        # Determine sort_order on new machine (append to end)
+        row = conn.execute(
+            "SELECT COALESCE(MAX(sort_order), 0) FROM jobs "
+            "WHERE machine_id = ? AND status IN ('queued','printing')",
+            (new_machine_id,),
+        ).fetchone()
+        new_sort = row[0] + 1
+
+        # Move the job
+        conn.execute(
+            "UPDATE jobs SET machine_id = ?, sort_order = ? WHERE id = ?",
+            (new_machine_id, new_sort, job_id),
+        )
+
+        # If job was printing, reset it to queued on the new machine
+        if job["status"] == "printing":
+            conn.execute("UPDATE jobs SET status = 'queued', started_at = NULL WHERE id = ?", (job_id,))
+            conn.execute("UPDATE orders SET status = 'scheduled' WHERE id = ?", (order_id,))
+
+        # Release old machine if it has no remaining active jobs
+        remaining_old = conn.execute(
+            "SELECT COUNT(*) FROM jobs WHERE machine_id = ? AND status IN ('queued','printing') AND id != ?",
+            (old_machine_id, job_id),
+        ).fetchone()[0]
+        if remaining_old == 0:
+            conn.execute("UPDATE machines SET status = 'idle' WHERE id = ?", (old_machine_id,))
+
+        # Activate new machine if it was idle
+        new_machine = dict(conn.execute("SELECT * FROM machines WHERE id = ?", (new_machine_id,)).fetchone())
+        if new_machine["status"] == "idle":
+            conn.execute("UPDATE machines SET status = 'printing' WHERE id = ?", (new_machine_id,))
+            conn.execute("UPDATE jobs SET status = 'printing', started_at = ? WHERE id = ?",
+                         (datetime.now().isoformat(), job_id))
+            conn.execute("UPDATE orders SET status = 'printing' WHERE id = ?", (order_id,))
+
+        conn.commit()
+        return jsonify({"success": True})
     finally:
         conn.close()
 

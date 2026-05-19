@@ -596,6 +596,73 @@ input.warn-border { border-color: var(--amber); }
   color: var(--gray-7);
 }
 .view-btn.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+
+/* ============================
+   SCHEDULE MODAL
+   ============================ */
+.sched-queue {
+  border: 1px solid var(--gray-2);
+  border-radius: var(--r);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+.sched-queue-hd {
+  padding: 8px 14px;
+  background: var(--gray-0);
+  border-bottom: 1px solid var(--gray-2);
+  font-size: .72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--gray-5);
+}
+.sched-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--gray-1);
+  transition: background .1s;
+}
+.sched-item:last-child { border-bottom: none; }
+.sched-item.new-job {
+  background: #eff6ff;
+  border-left: 3px solid var(--blue);
+}
+.sched-item.empty-queue {
+  background: #f0fdf4;
+  border-left: 3px solid var(--green);
+  color: var(--green);
+  font-size: .875rem;
+  font-weight: 600;
+}
+.sched-dot {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 5px;
+}
+.sched-info { flex: 1; min-width: 0; }
+.sched-label { font-weight: 600; font-size: .875rem; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.sched-times { font-size: .78rem; color: var(--gray-5); margin-top: 2px; font-variant-numeric: tabular-nums; }
+.sched-note  { font-size: .72rem; color: var(--blue); margin-top: 2px; }
+
+.priority-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--gray-0);
+  border: 1px solid var(--gray-2);
+  border-radius: var(--r);
+  margin-bottom: 14px;
+  cursor: pointer;
+  transition: background .12s;
+}
+.priority-box:hover { background: #fffbeb; border-color: var(--amber); }
+.priority-box input[type=checkbox] { width: auto; cursor: pointer; }
+.priority-box-label { font-size: .875rem; font-weight: 500; }
+.priority-box-sub   { font-size: .75rem; color: var(--gray-5); }
 </style>
 </head>
 <body>
@@ -830,6 +897,58 @@ input.warn-border { border-color: var(--amber); }
       <button class="modal-close" onclick="closeModal('m-rec')">×</button>
     </div>
     <div id="rec-body"></div>
+  </div>
+</div>
+
+<!-- ===== MODAL: SCHEDULE JOB ===== -->
+<div class="overlay" id="m-schedule">
+  <div class="modal" style="max-width:680px">
+    <div class="modal-hd">
+      <h3>Schedule Order</h3>
+      <button class="modal-close" onclick="closeModal('m-schedule')">×</button>
+    </div>
+
+    <!-- Order summary strip -->
+    <div id="sched-order-info"></div>
+
+    <!-- Machine picker -->
+    <div class="fg">
+      <label>Target Machine</label>
+      <select id="sched-machine" onchange="schedMachineChanged()">
+        <option value="">— Select a machine —</option>
+      </select>
+    </div>
+
+    <!-- Live queue preview -->
+    <div id="sched-timeline"></div>
+
+    <!-- Priority -->
+    <label class="priority-box" id="sched-priority-box">
+      <input type="checkbox" id="sched-priority" onchange="updateSchedTimeline()">
+      <div>
+        <div class="priority-box-label">Move to front of queue</div>
+        <div class="priority-box-sub">This order will start as soon as the current print finishes, ahead of other queued jobs.</div>
+      </div>
+    </label>
+
+    <!-- Hours + notes -->
+    <div class="row-2">
+      <div class="fg">
+        <label>Estimated Build Time (hours) *</label>
+        <input type="number" id="sched-hours" min="0" step="0.5" placeholder="e.g. 24"
+               oninput="updateSchedTimeline()">
+        <div class="fg-sub">Drives the countdown timer and queue estimates.</div>
+      </div>
+      <div class="fg">
+        <label>Notes</label>
+        <textarea id="sched-notes" rows="3" placeholder="Optional…"></textarea>
+      </div>
+    </div>
+
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal('m-schedule')">Cancel</button>
+      <button class="btn btn-primary" id="sched-confirm-btn" onclick="confirmSchedule()">Confirm Schedule</button>
+    </div>
   </div>
 </div>
 
@@ -1471,7 +1590,10 @@ function renderGantt(data) {
         const endLabel = jEnd.toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'});
         const cls    = j.status === 'printing' ? 'printing' : 'queued';
         blocks += `<div class="gantt-block ${cls}"
-                        style="left:${bx}px;width:${Math.min(bw, trackW - bx)}px"
+                        style="left:${bx}px;width:${Math.min(bw, trackW - bx)}px;cursor:grab"
+                        draggable="true"
+                        ondragstart="jobDragStart(event,${j.id},'${label.replace(/'/g,"\\'")}',${m.id})"
+                        ondragend="jobDragEnd(event)"
                         title="${label} — ${j.estimated_hours}h (ends ~${endLabel})">
                      ${bw > 40 ? label : ''}
                    </div>`;
@@ -1527,16 +1649,19 @@ function renderGanttPending(pending) {
       <div class="pending-card-title">${o.reference || '#' + o.id}</div>
       <div class="pending-card-sub">${o.client_name}</div>
       <div class="pending-card-sub" style="margin-top:3px">${o.part_count} part${o.part_count !== 1 ? 's' : ''} · ${o.total_qty} pcs${o.due_date ? ' · Due ' + o.due_date : ''}</div>
+      <button class="btn btn-primary btn-sm" style="margin-top:10px;width:100%"
+              onclick="openScheduleModal(${o.id})">Schedule →</button>
     </div>`).join('');
 }
 
 // ================================================================
-// GANTT — drag & drop
+// GANTT — drag & drop (pending orders onto machine rows)
 // ================================================================
 function ganttDragStart(event, orderId) {
   dragOrderId = orderId;
+  dragJobId   = null;
   event.dataTransfer.effectAllowed = 'move';
-  event.dataTransfer.setData('text/plain', String(orderId));
+  event.dataTransfer.setData('text/plain', 'order:' + orderId);
   event.currentTarget.classList.add('dragging');
 }
 
@@ -1557,19 +1682,252 @@ function ganttLeave(row) {
 function ganttDrop(event, machineId, machineName, row) {
   event.preventDefault();
   row.classList.remove('drop-target');
-  const orderId = parseInt(event.dataTransfer.getData('text/plain') || dragOrderId);
-  if (!orderId) return;
+
+  const raw = event.dataTransfer.getData('text/plain');
+
+  // Existing job being reassigned to a different machine
+  if (raw.startsWith('job:') || dragJobId !== null) {
+    const jobId      = parseInt(raw.replace('job:', '')) || dragJobId;
+    const fromMachine = dragJobFromMachine;
+    dragJobId = null; dragJobFromMachine = null;
+    if (fromMachine === machineId) return; // same machine, nothing to do
+    openReassignModal(jobId, machineId, machineName);
+    return;
+  }
+
+  // Pending order being scheduled
+  const orderId = parseInt(raw.replace('order:', '')) || dragOrderId;
   dragOrderId = null;
+  if (!orderId) return;
+  openScheduleModal(orderId, machineId);
+}
 
-  // Find order details
-  const order = (ganttData?.pending || []).find(o => o.id === orderId);
-  const label = order ? (order.reference || '#' + orderId) + ' — ' + order.client_name : 'Order #' + orderId;
+// ================================================================
+// GANTT — drag & drop (existing job blocks → reassign)
+// ================================================================
+let dragJobId          = null;
+let dragJobFromMachine = null;
 
-  currentRecOrder = orderId;
-  document.getElementById('rec-title').textContent = `Assign to ${machineName}`;
-  document.getElementById('rec-body').innerHTML = '';
+function jobDragStart(event, jobId, label, fromMachineId) {
+  dragJobId          = jobId;
+  dragJobFromMachine = fromMachineId;
+  dragOrderId        = null;
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('text/plain', 'job:' + jobId);
+  event.stopPropagation();
+}
+
+function jobDragEnd(event) {
+  event.currentTarget.style.opacity = '';
+}
+
+function openReassignModal(jobId, newMachineId, newMachineName) {
+  // Find the job in ganttData
+  let jobLabel = 'Job #' + jobId;
+  for (const m of (ganttData?.machines || [])) {
+    const j = (m.jobs || []).find(x => x.id === jobId);
+    if (j) { jobLabel = j.reference || j.client_name; break; }
+  }
+  document.getElementById('rec-title').textContent = 'Move Job to Another Machine';
+  document.getElementById('rec-body').innerHTML = `
+    <div class="alert alert-warn">
+      Move <strong>${jobLabel}</strong> to <strong>${newMachineName}</strong>?
+      <br><span style="font-size:.8rem">If the job is currently printing it will be reset to queued on the new machine.</span>
+    </div>
+    <div class="modal-foot" style="margin-top:8px">
+      <button class="btn btn-ghost" onclick="closeModal('m-rec')">Cancel</button>
+      <button class="btn btn-primary" onclick="doReassign(${jobId},${newMachineId})">Move Job</button>
+    </div>`;
   openModal('m-rec');
-  showAssignForm(machineId, machineName, orderId);
+}
+
+async function doReassign(jobId, machineId) {
+  await api('/api/jobs/' + jobId + '/reassign', 'PUT', { machine_id: machineId });
+  closeModal('m-rec');
+  toast('Job moved to new machine');
+  loadDashboard();
+  loadSchedule();
+}
+
+// ================================================================
+// Schedule modal
+// ================================================================
+let schedOrderId = null;
+
+function openScheduleModal(orderId, machineId = null) {
+  schedOrderId = orderId;
+
+  // Order summary
+  const o = (ganttData?.pending || []).find(x => x.id === orderId)
+          || orders.find(x => x.id === orderId);
+  document.getElementById('sched-order-info').innerHTML = o ? `
+    <div style="background:var(--gray-0);border:1px solid var(--gray-2);border-radius:var(--r);padding:11px 14px;margin-bottom:16px;font-size:.875rem;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+      <strong>${o.reference || '#' + orderId}</strong>
+      <span style="color:var(--gray-7)">${o.client_name}</span>
+      <span style="color:var(--gray-5)">${o.part_count ?? '?'} parts · ${o.total_qty ?? '?'} pcs</span>
+      ${o.due_date ? `<span style="color:var(--amber);font-weight:600">Due ${o.due_date}</span>` : ''}
+    </div>` : '';
+
+  // Machine select
+  const allMachines = ganttData?.machines || machines;
+  const sel = document.getElementById('sched-machine');
+  sel.innerHTML = '<option value="">— Select a machine —</option>' +
+    allMachines.map(m => {
+      const avail = !['maintenance','offline'].includes(m.status);
+      return `<option value="${m.id}" ${m.id === machineId ? 'selected' : ''} ${!avail ? 'disabled' : ''}>${m.name}  (${m.status})</option>`;
+    }).join('');
+
+  // Reset fields
+  document.getElementById('sched-hours').value    = '';
+  document.getElementById('sched-priority').checked = false;
+  document.getElementById('sched-notes').value    = '';
+
+  updateSchedTimeline();
+  openModal('m-schedule');
+}
+
+function schedMachineChanged() {
+  updateSchedTimeline();
+}
+
+function updateSchedTimeline() {
+  const machineId = parseInt(document.getElementById('sched-machine').value) || null;
+  const hours     = parseFloat(document.getElementById('sched-hours').value) || 0;
+  const priority  = document.getElementById('sched-priority').checked;
+  const container = document.getElementById('sched-timeline');
+
+  if (!machineId) { container.innerHTML = ''; return; }
+
+  const machine = (ganttData?.machines || []).find(m => m.id === machineId);
+  if (!machine) { container.innerHTML = ''; return; }
+
+  const items = computeSchedItems(machine, hours, priority);
+
+  let html = `<div class="sched-queue">
+    <div class="sched-queue-hd">Queue preview — ${machine.name}</div>`;
+
+  if (items.length === 0) {
+    html += `<div class="sched-item empty-queue">
+      <div class="sched-dot" style="background:var(--green)"></div>
+      <div class="sched-info">
+        <div class="sched-label">Machine is idle — your order starts immediately</div>
+        ${hours > 0 ? `<div class="sched-times">${fmtRange(new Date(ganttData?.now || Date.now()), new Date(new Date(ganttData?.now || Date.now()).getTime() + hours * 3600000), hours)}</div>` : '<div class="sched-times">Enter build time to see estimated end</div>'}
+      </div></div>`;
+  } else {
+    items.forEach((item, idx) => {
+      const dotColor = item.isNew ? 'var(--blue)' : (item.status === 'printing' ? '#2563eb' : '#818cf8');
+      const statusPill = item.isNew
+        ? `<span style="background:var(--blue);color:#fff;padding:1px 7px;border-radius:99px;font-size:.65rem;font-weight:700">YOUR ORDER</span>`
+        : (item.status === 'printing'
+            ? `<span style="background:#dbeafe;color:#1d4ed8;padding:1px 7px;border-radius:99px;font-size:.65rem;font-weight:700">PRINTING</span>`
+            : `<span style="background:#ede9fe;color:#5b21b6;padding:1px 7px;border-radius:99px;font-size:.65rem;font-weight:700">QUEUED</span>`);
+
+      // Context note for the new job
+      let note = '';
+      if (item.isNew) {
+        if (item.isMachineIdle) {
+          note = `<div class="sched-note">Machine is idle — starts immediately</div>`;
+        } else if (priority) {
+          const printingJob = items.find(i => i.status === 'printing');
+          note = printingJob
+            ? `<div class="sched-note">Starts as soon as "${printingJob.label}" finishes</div>`
+            : `<div class="sched-note">Moved to front of queue</div>`;
+        } else {
+          const prevItem = items[idx - 1];
+          if (prevItem) note = `<div class="sched-note">Starts after "${prevItem.label}" finishes</div>`;
+        }
+      }
+
+      html += `<div class="sched-item ${item.isNew ? 'new-job' : ''}">
+        <div class="sched-dot" style="background:${dotColor}"></div>
+        <div class="sched-info">
+          <div class="sched-label">${item.label} ${statusPill}</div>
+          <div class="sched-times">${item.hours > 0 ? fmtRange(item.start, item.end, item.hours) : (item.isNew ? 'Enter build time above to see estimate' : '—')}</div>
+          ${note}
+        </div></div>`;
+    });
+  }
+
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function computeSchedItems(machine, hours, priority) {
+  const now  = new Date(ganttData?.now || Date.now());
+  const jobs = (machine.jobs || []).map(j => ({
+    isNew:  false,
+    label:  j.reference || j.client_name,
+    status: j.status,
+    start:  new Date(j.gantt_start),
+    end:    new Date(j.gantt_end),
+    hours:  j.estimated_hours || 0,
+  }));
+
+  if (!jobs.length) return []; // empty → special empty-queue display
+
+  // Compute where the new job slots in
+  let newStart;
+  if (priority) {
+    const printing = jobs.find(j => j.status === 'printing');
+    newStart = printing ? new Date(printing.end) : now;
+  } else {
+    newStart = new Date(jobs[jobs.length - 1].end);
+  }
+
+  const newItem = {
+    isNew:          true,
+    isMachineIdle:  false,
+    label:          'Your order',
+    status:         'new',
+    start:          newStart,
+    end:            new Date(newStart.getTime() + hours * 3600000),
+    hours,
+  };
+
+  const result = [...jobs];
+  if (priority) {
+    const printIdx = result.findIndex(j => j.status === 'printing');
+    const insertAt = printIdx >= 0 ? printIdx + 1 : 0;
+    result.splice(insertAt, 0, newItem);
+    // Cascade: shift all subsequent queued jobs
+    for (let i = insertAt + 1; i < result.length; i++) {
+      if (result[i].isNew) continue;
+      const prevEnd  = result[i - 1].end;
+      result[i] = { ...result[i], start: prevEnd, end: new Date(prevEnd.getTime() + result[i].hours * 3600000) };
+    }
+  } else {
+    result.push(newItem);
+  }
+  return result;
+}
+
+function fmtRange(start, end, hours) {
+  const o = { weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit', hour12:false };
+  return `${start.toLocaleString('en-GB', o)} → ${end.toLocaleString('en-GB', o)}   (${hours}h)`;
+}
+
+async function confirmSchedule() {
+  const machineId = parseInt(document.getElementById('sched-machine').value);
+  const hours     = parseFloat(document.getElementById('sched-hours').value);
+  const priority  = document.getElementById('sched-priority').checked;
+  const notes     = document.getElementById('sched-notes').value;
+
+  if (!machineId)        { alert('Please select a machine.');            return; }
+  if (!hours || hours<=0){ alert('Please enter the estimated build time.'); return; }
+
+  await api('/api/assign', 'POST', {
+    machine_id:      machineId,
+    order_id:        schedOrderId,
+    estimated_hours: hours,
+    priority,
+    notes,
+  });
+
+  closeModal('m-schedule');
+  toast('Order scheduled!');
+  loadDashboard();
+  loadOrders();
+  loadSchedule();
 }
 
 // ================================================================
