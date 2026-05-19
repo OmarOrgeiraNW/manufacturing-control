@@ -477,6 +477,65 @@ def api_dashboard():
 
 
 # ---------------------------------------------------------------------------
+# Routes — Gantt / schedule
+# ---------------------------------------------------------------------------
+
+@app.route("/api/gantt")
+def api_gantt():
+    conn = get_db()
+    try:
+        now = datetime.now()
+        machines = [dict(r) for r in conn.execute("SELECT * FROM machines ORDER BY name").fetchall()]
+
+        result = []
+        for m in machines:
+            # Active jobs in execution order: printing first, then queued by created_at
+            jobs = [dict(r) for r in conn.execute(
+                """SELECT j.*, o.client_name, o.reference
+                   FROM jobs j JOIN orders o ON j.order_id = o.id
+                   WHERE j.machine_id = ? AND j.status IN ('printing','queued')
+                   ORDER BY
+                     CASE j.status WHEN 'printing' THEN 0 ELSE 1 END,
+                     j.created_at""",
+                (m["id"],),
+            ).fetchall()]
+
+            # Calculate each job's start/end on the timeline
+            cursor = now
+            for job in jobs:
+                hours = float(job["estimated_hours"] or 0)
+                if job["status"] == "printing" and job["started_at"]:
+                    start = datetime.fromisoformat(job["started_at"])
+                    end = start + timedelta(hours=hours)
+                    # cursor advances to whenever this finishes (may be in the past if overdue)
+                    cursor = max(end, now)
+                else:
+                    start = cursor
+                    end = cursor + timedelta(hours=hours)
+                    cursor = end
+                job["gantt_start"] = start.isoformat()
+                job["gantt_end"] = end.isoformat()
+
+            m["jobs"] = jobs
+            result.append(m)
+
+        # Pending orders (not yet assigned)
+        pending = [dict(r) for r in conn.execute(
+            """SELECT o.id, o.client_name, o.reference, o.due_date,
+                      COUNT(p.id) AS part_count,
+                      COALESCE(SUM(p.quantity), 0) AS total_qty
+               FROM orders o LEFT JOIN parts p ON p.order_id = o.id
+               WHERE o.status = 'pending'
+               GROUP BY o.id
+               ORDER BY o.created_at DESC""",
+        ).fetchall()]
+
+        return jsonify({"machines": result, "pending": pending, "now": now.isoformat()})
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     init_db()

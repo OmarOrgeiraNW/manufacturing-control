@@ -11,6 +11,7 @@
   --green:   #16a34a;
   --amber:   #d97706;
   --red:     #dc2626;
+  --indigo:  #6366f1;
   --gray-0:  #f9fafb;
   --gray-1:  #f3f4f6;
   --gray-2:  #e5e7eb;
@@ -62,7 +63,7 @@ nav button:hover  { background: var(--gray-1); color: var(--gray-7); }
 nav button.active { background: var(--blue); color: #fff; }
 
 /* ---- Layout ---- */
-main { max-width: 1200px; margin: 0 auto; padding: 24px; }
+main { max-width: 1280px; margin: 0 auto; padding: 24px; }
 .tab-content { display: none; }
 .tab-content.active { display: block; }
 
@@ -117,10 +118,7 @@ main { max-width: 1200px; margin: 0 auto; padding: 24px; }
   box-shadow: var(--sh);
   overflow: hidden;
 }
-.machine-card .accent {
-  height: 4px;
-  width: 100%;
-}
+.machine-card .accent { height: 4px; width: 100%; }
 .accent-idle        { background: var(--green); }
 .accent-printing    { background: var(--blue); }
 .accent-maintenance { background: var(--amber); }
@@ -186,18 +184,31 @@ main { max-width: 1200px; margin: 0 auto; padding: 24px; }
 .qi {
   display: flex;
   justify-content: space-between;
-  padding: 3px 0;
+  align-items: flex-start;
+  padding: 4px 0;
   border-bottom: 1px dashed var(--gray-1);
   color: var(--gray-7);
+  gap: 8px;
 }
 .qi:last-child { border-bottom: none; }
+.qi-right { text-align: right; flex-shrink: 0; }
+
+/* Countdown */
+.countdown {
+  font-size: .72rem;
+  font-weight: 600;
+  color: var(--blue);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.01em;
+}
+.countdown.overdue { color: var(--red); }
 
 .pulse-dot {
   display: inline-block;
-  width: 8px; height: 8px;
+  width: 7px; height: 7px;
   background: var(--blue);
   border-radius: 50%;
-  margin-right: 5px;
+  margin-right: 4px;
   animation: pulse 1.4s infinite;
 }
 @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.7)} }
@@ -292,6 +303,15 @@ input:focus, select:focus, textarea:focus {
   border-color: var(--blue);
   box-shadow: 0 0 0 3px rgba(37,99,235,.12);
 }
+input.warn-border { border-color: var(--amber); }
+.dim-warn {
+  font-size: .72rem;
+  color: var(--amber);
+  font-weight: 600;
+  margin-top: 3px;
+  display: none;
+}
+.dim-warn.show { display: block; }
 .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
 .modal-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
@@ -313,6 +333,7 @@ input:focus, select:focus, textarea:focus {
   font-size: .875rem;
 }
 .part-row:last-child { border-bottom: none; }
+.part-row.over-limit { background: #fffbeb; }
 .add-part-box {
   background: var(--gray-0);
   border: 1px solid var(--gray-2);
@@ -334,7 +355,6 @@ input:focus, select:focus, textarea:focus {
   border-radius: var(--r);
   padding: 16px;
   margin-bottom: 12px;
-  transition: border-color .15s;
 }
 .rec-card.best { border-color: var(--blue); background: #eff6ff; }
 .rec-card.unavail { opacity: .55; }
@@ -390,6 +410,192 @@ input:focus, select:focus, textarea:focus {
   animation: spin .7s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ============================
+   GANTT
+   ============================ */
+.gantt-wrap {
+  display: flex;
+  background: #fff;
+  border: 1px solid var(--gray-2);
+  border-radius: var(--r);
+  box-shadow: var(--sh);
+  overflow: hidden;
+}
+
+.gantt-sidebar {
+  flex-shrink: 0;
+  width: 170px;
+  border-right: 2px solid var(--gray-2);
+  background: var(--gray-0);
+}
+.gantt-sidebar-hd {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  font-size: .68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--gray-5);
+  border-bottom: 1px solid var(--gray-2);
+}
+.gantt-sidebar-row {
+  height: 56px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--gray-1);
+  font-size: .84rem;
+  font-weight: 600;
+  color: var(--gray-9);
+  gap: 3px;
+}
+
+.gantt-scroll {
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  cursor: default;
+}
+
+.gantt-axis {
+  height: 44px;
+  position: relative;
+  border-bottom: 1px solid var(--gray-2);
+  background: var(--gray-0);
+}
+.gantt-axis-day {
+  position: absolute;
+  top: 0;
+  height: 44px;
+  border-left: 1px solid var(--gray-2);
+  padding: 5px 6px;
+  font-size: .7rem;
+  font-weight: 600;
+  color: var(--gray-5);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.gantt-axis-hour {
+  position: absolute;
+  top: 22px;
+  border-left: 1px dashed var(--gray-2);
+  height: 22px;
+  padding: 3px 4px;
+  font-size: .62rem;
+  color: var(--gray-3);
+  white-space: nowrap;
+}
+.gantt-now-flag {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  background: var(--red);
+  z-index: 10;
+}
+.gantt-now-label {
+  position: absolute;
+  top: 2px;
+  background: var(--red);
+  color: #fff;
+  font-size: .6rem;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+  z-index: 11;
+}
+
+.gantt-track-row {
+  height: 56px;
+  position: relative;
+  border-bottom: 1px solid var(--gray-1);
+}
+.gantt-track-row.drop-target {
+  background: #eff6ff;
+  outline: 2px dashed var(--blue);
+  outline-offset: -2px;
+}
+.gantt-gridline {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  height: 56px;
+  background: var(--gray-1);
+  pointer-events: none;
+}
+.gantt-gridline.major {
+  background: var(--gray-2);
+}
+.gantt-block {
+  position: absolute;
+  top: 8px;
+  height: 40px;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  padding: 0 7px;
+  font-size: .72rem;
+  font-weight: 600;
+  color: #fff;
+  overflow: hidden;
+  white-space: nowrap;
+  cursor: default;
+  min-width: 4px;
+  z-index: 3;
+  box-shadow: 0 1px 3px rgba(0,0,0,.2);
+}
+.gantt-block.printing { background: var(--blue); }
+.gantt-block.queued   { background: var(--indigo); }
+.gantt-now-row {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 56px;
+  background: rgba(220,38,38,.35);
+  z-index: 5;
+  pointer-events: none;
+}
+
+/* Pending cards */
+.pending-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.pending-card {
+  background: #fff;
+  border: 1px solid var(--gray-2);
+  border-radius: var(--r);
+  padding: 11px 15px;
+  cursor: grab;
+  min-width: 190px;
+  max-width: 260px;
+  box-shadow: var(--sh);
+  transition: box-shadow .15s, transform .15s;
+  user-select: none;
+}
+.pending-card:active { cursor: grabbing; }
+.pending-card.dragging { opacity: .5; transform: rotate(1.5deg); }
+.pending-card-title { font-weight: 600; font-size: .9rem; margin-bottom: 3px; }
+.pending-card-sub   { font-size: .78rem; color: var(--gray-5); }
+
+/* view toggle */
+.view-btns { display: flex; gap: 4px; }
+.view-btn {
+  padding: 4px 12px;
+  border: 1px solid var(--gray-3);
+  border-radius: var(--r);
+  background: #fff;
+  cursor: pointer;
+  font-size: .8rem;
+  font-weight: 500;
+  color: var(--gray-7);
+}
+.view-btn.active { background: var(--blue); color: #fff; border-color: var(--blue); }
 </style>
 </head>
 <body>
@@ -399,6 +605,7 @@ input:focus, select:focus, textarea:focus {
   <nav>
     <button class="active" onclick="nav('dashboard',this)">Dashboard</button>
     <button onclick="nav('orders',this)">Orders</button>
+    <button onclick="nav('schedule',this)">Schedule</button>
     <button onclick="nav('machines',this)">Machines</button>
   </nav>
 </header>
@@ -436,6 +643,32 @@ input:focus, select:focus, textarea:focus {
     </div>
   </div>
 
+  <!-- ===== SCHEDULE / GANTT ===== -->
+  <div id="tab-schedule" class="tab-content">
+    <div class="sec-hd">
+      <h2>Schedule</h2>
+      <div style="display:flex;align-items:center;gap:12px">
+        <span style="font-size:.8rem;color:var(--gray-5)">View:</span>
+        <div class="view-btns">
+          <button class="view-btn active" onclick="setGanttView(3,this)">3 days</button>
+          <button class="view-btn" onclick="setGanttView(7,this)">7 days</button>
+          <button class="view-btn" onclick="setGanttView(14,this)">14 days</button>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="loadSchedule()">↺ Refresh</button>
+      </div>
+    </div>
+
+    <div id="gantt-container"></div>
+
+    <div style="margin-top:24px">
+      <div class="sec-hd">
+        <h2>Pending Orders</h2>
+        <span style="font-size:.8rem;color:var(--gray-5)">Drag a card onto a machine row to assign it</span>
+      </div>
+      <div id="gantt-pending" class="pending-strip"></div>
+    </div>
+  </div>
+
   <!-- ===== MACHINES ===== -->
   <div id="tab-machines" class="tab-content">
     <div class="sec-hd">
@@ -467,11 +700,11 @@ input:focus, select:focus, textarea:focus {
       <div class="fg"><label>Build Volume (mm)</label>
         <div class="row-3">
           <div><label style="font-size:.72rem;color:var(--gray-5);font-weight:400">X width</label>
-            <input type="number" name="bx" value="250" min="1"></div>
+            <input type="number" name="bx" value="200" min="1"></div>
           <div><label style="font-size:.72rem;color:var(--gray-5);font-weight:400">Y depth</label>
-            <input type="number" name="by" value="250" min="1"></div>
+            <input type="number" name="by" value="200" min="1"></div>
           <div><label style="font-size:.72rem;color:var(--gray-5);font-weight:400">Z height</label>
-            <input type="number" name="bz" value="300" min="1"></div>
+            <input type="number" name="bz" value="200" min="1"></div>
         </div></div>
       <div class="fg"><label>Notes</label>
         <textarea name="notes" rows="2" placeholder="Optional…"></textarea></div>
@@ -554,15 +787,30 @@ input:focus, select:focus, textarea:focus {
             <div><label style="font-size:.75rem;color:var(--gray-5);font-weight:400">Quantity</label>
               <input type="number" id="np-qty" value="1" min="1"></div>
           </div>
+
           <div style="font-size:.72rem;color:var(--gray-5);margin-bottom:6px">
-            Footprint dimensions (mm) — optional, used for batch-fit estimate
+            Dimensions (mm) — build plate limit is 200 × 200 × 200 mm
           </div>
-          <div class="row-3" style="margin-bottom:10px">
-            <input type="number" id="np-x" placeholder="X width" min="0" step="0.1">
-            <input type="number" id="np-y" placeholder="Y depth" min="0" step="0.1">
-            <input type="number" id="np-z" placeholder="Z height" min="0" step="0.1">
+          <div class="row-3" style="margin-bottom:4px">
+            <div>
+              <input type="number" id="np-x" placeholder="X width" min="0" step="0.1"
+                     oninput="checkDim(this,'np-x-warn',200)">
+              <div class="dim-warn" id="np-x-warn">⚠ Exceeds X limit (200 mm)</div>
+            </div>
+            <div>
+              <input type="number" id="np-y" placeholder="Y depth" min="0" step="0.1"
+                     oninput="checkDim(this,'np-y-warn',200)">
+              <div class="dim-warn" id="np-y-warn">⚠ Exceeds Y limit (200 mm)</div>
+            </div>
+            <div>
+              <input type="number" id="np-z" placeholder="Z height" min="0" step="0.1"
+                     oninput="checkDim(this,'np-z-warn',200)">
+              <div class="dim-warn" id="np-z-warn">⚠ Exceeds Z limit (200 mm)</div>
+            </div>
           </div>
-          <button type="button" class="btn btn-ghost btn-sm" onclick="addPart()">+ Add Part</button>
+          <div style="margin-top:10px">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="addPart()">+ Add Part</button>
+          </div>
         </div>
       </div>
 
@@ -574,7 +822,7 @@ input:focus, select:focus, textarea:focus {
   </div>
 </div>
 
-<!-- ===== MODAL: RECOMMENDATION ===== -->
+<!-- ===== MODAL: RECOMMENDATION / ASSIGN ===== -->
 <div class="overlay" id="m-rec">
   <div class="modal" style="max-width:640px">
     <div class="modal-hd">
@@ -599,17 +847,24 @@ input:focus, select:focus, textarea:focus {
 <div id="toast"></div>
 
 <script>
-// ---------------------------------------------------------------
+// ================================================================
 // State
-// ---------------------------------------------------------------
-let machines = [];
-let orders   = [];
-let pendingParts = [];
+// ================================================================
+let machines       = [];
+let orders         = [];
+let pendingParts   = [];
 let currentRecOrder = null;
+let ganttViewDays  = 3;
+let ganttData      = null;
+let dragOrderId    = null;
 
-// ---------------------------------------------------------------
+// Countdown state
+let cdTimers = [];      // [{id, endMs}]
+let cdInterval = null;
+
+// ================================================================
 // Navigation
-// ---------------------------------------------------------------
+// ================================================================
 function nav(name, btn) {
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
@@ -617,21 +872,22 @@ function nav(name, btn) {
   btn.classList.add('active');
   if (name === 'dashboard') loadDashboard();
   if (name === 'orders')    loadOrders();
+  if (name === 'schedule')  loadSchedule();
   if (name === 'machines')  loadMachinesTab();
 }
 
-// ---------------------------------------------------------------
+// ================================================================
 // Modals
-// ---------------------------------------------------------------
-function openModal(id) { document.getElementById(id).classList.add('open'); }
+// ================================================================
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 document.querySelectorAll('.overlay').forEach(o => {
   o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); });
 });
 
-// ---------------------------------------------------------------
+// ================================================================
 // API
-// ---------------------------------------------------------------
+// ================================================================
 async function api(path, method = 'GET', body = null) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
@@ -641,9 +897,9 @@ async function api(path, method = 'GET', body = null) {
   return data;
 }
 
-// ---------------------------------------------------------------
+// ================================================================
 // Toast
-// ---------------------------------------------------------------
+// ================================================================
 function toast(msg, color = '#16a34a') {
   const el = document.getElementById('toast');
   el.textContent = msg;
@@ -652,16 +908,61 @@ function toast(msg, color = '#16a34a') {
   setTimeout(() => el.classList.remove('show'), 2800);
 }
 
-// ---------------------------------------------------------------
+// ================================================================
 // Helpers
-// ---------------------------------------------------------------
+// ================================================================
 function badge(status) {
   return `<span class="badge badge-${status}">${status}</span>`;
 }
 
-// ---------------------------------------------------------------
+// ================================================================
+// Dimension warning
+// ================================================================
+function checkDim(input, warnId, limit) {
+  const val = parseFloat(input.value);
+  const warn = document.getElementById(warnId);
+  if (val > limit) {
+    warn.classList.add('show');
+    input.classList.add('warn-border');
+  } else {
+    warn.classList.remove('show');
+    input.classList.remove('warn-border');
+  }
+}
+
+// ================================================================
+// Countdown timers
+// ================================================================
+function startCountdowns(timers) {
+  // timers: [{id, endMs}]
+  if (cdInterval) clearInterval(cdInterval);
+  cdTimers = timers;
+  if (!cdTimers.length) return;
+  function tick() {
+    const now = Date.now();
+    cdTimers.forEach(({id, endMs}) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const diff = endMs - now;
+      if (diff <= 0) {
+        el.textContent = 'Overdue';
+        el.classList.add('overdue');
+      } else {
+        const h = Math.floor(diff / 3600000);
+        const m = Math.floor((diff % 3600000) / 60000);
+        const s = Math.floor((diff % 60000) / 1000);
+        el.textContent = `${h}h ${String(m).padStart(2,'0')}m ${String(s).padStart(2,'0')}s remaining`;
+        el.classList.remove('overdue');
+      }
+    });
+  }
+  tick();
+  cdInterval = setInterval(tick, 1000);
+}
+
+// ================================================================
 // Dashboard
-// ---------------------------------------------------------------
+// ================================================================
 async function loadDashboard() {
   const [ms, dash] = await Promise.all([api('/api/machines'), api('/api/dashboard')]);
   machines = ms;
@@ -678,27 +979,39 @@ function renderMachineCards(containerId, list, editable) {
     </div>`;
     return;
   }
+
+  const newTimers = [];
+
   el.innerHTML = list.map(m => {
     const qs = m.queued_jobs || [];
-    const queueHtml = qs.length
-      ? qs.map(j => `<div class="qi">
-          <span>${j.client_name}${j.reference ? ' — ' + j.reference : ''}</span>
-          <span>${j.estimated_hours ? j.estimated_hours + 'h' : ''}</span>
-        </div>`).join('')
-      : '<div style="color:var(--gray-3);font-size:.78rem">Queue empty</div>';
 
-    const printing = m.status === 'printing'
-      ? `<div style="font-size:.78rem;color:var(--blue);margin-bottom:8px">
-           <span class="pulse-dot"></span>Currently printing
-         </div>`
-      : '';
+    const queueHtml = qs.length ? qs.map(j => {
+      let right = '';
+      if (j.status === 'printing' && j.started_at && j.estimated_hours) {
+        const endMs = new Date(j.started_at).getTime() + j.estimated_hours * 3600000;
+        const cdId  = `cd-${j.id}`;
+        newTimers.push({id: cdId, endMs});
+        right = `<div class="qi-right">
+          <div style="font-size:.72rem;color:var(--gray-5)">${j.estimated_hours}h est.</div>
+          <div class="countdown" id="${cdId}"></div>
+        </div>`;
+      } else {
+        right = `<span class="qi-right" style="font-size:.75rem;color:var(--gray-5)">${j.estimated_hours ? j.estimated_hours + 'h' : ''}</span>`;
+      }
+      const isPrinting = j.status === 'printing';
+      return `<div class="qi">
+        <span>${isPrinting ? '<span class="pulse-dot"></span>' : ''}
+          <strong>${j.client_name}</strong>${j.reference ? ' — ' + j.reference : ''}
+        </span>
+        ${right}
+      </div>`;
+    }).join('') : '<div style="color:var(--gray-3);font-size:.78rem">Queue empty</div>';
 
-    const editBtns = editable
-      ? `<div class="mc-actions">
-           <button class="btn btn-ghost btn-sm" onclick="openEditMachine(${m.id})">Edit</button>
-           <button class="btn btn-danger btn-sm" onclick="deleteMachine(${m.id})">Delete</button>
-         </div>`
-      : '';
+    const editBtns = editable ? `
+      <div class="mc-actions">
+        <button class="btn btn-ghost btn-sm" onclick="openEditMachine(${m.id})">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteMachine(${m.id})">Delete</button>
+      </div>` : '';
 
     return `
     <div class="machine-card">
@@ -709,7 +1022,6 @@ function renderMachineCards(containerId, list, editable) {
           ${badge(m.status)}
         </div>
         <div class="mc-meta">Build plate ${m.build_x} × ${m.build_y} × ${m.build_z} mm</div>
-        ${printing}
         <div class="mc-stats">
           <div class="stat">
             <div class="stat-lbl">Queue</div>
@@ -728,6 +1040,8 @@ function renderMachineCards(containerId, list, editable) {
       ${editBtns}
     </div>`;
   }).join('');
+
+  startCountdowns(newTimers);
 }
 
 function renderQueue(jobs) {
@@ -755,14 +1069,14 @@ function renderQueue(jobs) {
   </div>`;
 }
 
-// ---------------------------------------------------------------
+// ================================================================
 // Orders
-// ---------------------------------------------------------------
+// ================================================================
 async function loadOrders() {
   orders = await api('/api/orders');
   const tbody = document.getElementById('orders-body');
   if (!orders.length) {
-    tbody.innerHTML = `<tr><td colspan="7"><div class="empty"><strong>No orders yet</strong>Create your first order with the button above.</div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty"><strong>No orders yet</strong>Create your first order above.</div></td></tr>`;
     return;
   }
   tbody.innerHTML = orders.map(o => {
@@ -771,8 +1085,8 @@ async function loadOrders() {
     const mach = o.job ? o.job.machine_name : '—';
     const due  = o.due_date || '—';
     const ref  = o.reference || '#' + o.id;
-    const canAssign   = o.status === 'pending';
-    const canUpdate   = o.job && ['queued','printing'].includes(o.job.status);
+    const canAssign  = o.status === 'pending';
+    const canUpdate  = o.job && ['queued','printing'].includes(o.job.status);
     return `
     <tr>
       <td><strong>${ref}</strong></td>
@@ -793,24 +1107,35 @@ async function loadOrders() {
 async function deleteOrder(id) {
   if (!confirm('Delete this order? This cannot be undone.')) return;
   await api('/api/orders/' + id, 'DELETE');
+  toast('Order deleted', '#dc2626');
   loadOrders();
-  toast('Order deleted');
 }
 
-// ---------------------------------------------------------------
+// ================================================================
 // Parts (new order form)
-// ---------------------------------------------------------------
+// ================================================================
 function addPart() {
   const name = document.getElementById('np-name').value.trim();
   if (!name) { alert('Part name is required.'); return; }
+
+  const x = parseFloat(document.getElementById('np-x').value) || null;
+  const y = parseFloat(document.getElementById('np-y').value) || null;
+  const z = parseFloat(document.getElementById('np-z').value) || null;
+  const over = [x > 200 && 'X', y > 200 && 'Y', z > 200 && 'Z'].filter(Boolean);
+
+  if (over.length && !confirm(`⚠ Dimension${over.length > 1 ? 's' : ''} ${over.join(', ')} exceed the 200 mm build plate limit. Add anyway?`)) return;
+
   pendingParts.push({
     name,
     quantity: parseInt(document.getElementById('np-qty').value) || 1,
-    size_x: parseFloat(document.getElementById('np-x').value) || null,
-    size_y: parseFloat(document.getElementById('np-y').value) || null,
-    size_z: parseFloat(document.getElementById('np-z').value) || null,
+    size_x: x, size_y: y, size_z: z,
+    _over: over.length > 0,
   });
   ['np-name','np-x','np-y','np-z'].forEach(id => document.getElementById(id).value = '');
+  ['np-x-warn','np-y-warn','np-z-warn'].forEach(id => {
+    document.getElementById(id).classList.remove('show');
+  });
+  ['np-x','np-y','np-z'].forEach(id => document.getElementById(id).classList.remove('warn-border'));
   document.getElementById('np-qty').value = '1';
   renderPendingParts();
 }
@@ -825,9 +1150,11 @@ function renderPendingParts() {
   }
   el.innerHTML = pendingParts.map((p, i) => {
     const dims = [p.size_x, p.size_y, p.size_z].filter(Boolean).join(' × ');
-    return `<div class="part-row">
+    const overTag = p._over ? `<span style="color:var(--amber);font-size:.72rem;margin-left:6px">⚠ over limit</span>` : '';
+    return `<div class="part-row ${p._over ? 'over-limit' : ''}">
       <span><strong>${p.name}</strong> × ${p.quantity}
         ${dims ? `<span style="color:var(--gray-5);font-size:.78rem"> — ${dims} mm</span>` : ''}
+        ${overTag}
       </span>
       <button class="btn btn-ghost btn-sm" onclick="removePart(${i})">Remove</button>
     </div>`;
@@ -850,16 +1177,15 @@ async function createOrder(e) {
   f.reset();
   closeModal('m-new-order');
   toast('Order created!');
-  // Refresh orders list then offer recommendation
   orders = await api('/api/orders');
   if (confirm('Order saved! Find the best machine for it now?')) {
     getRecommendation(result.id);
   }
 }
 
-// ---------------------------------------------------------------
+// ================================================================
 // Machines tab
-// ---------------------------------------------------------------
+// ================================================================
 async function loadMachinesTab() {
   machines = await api('/api/machines');
   renderMachineCards('machines-edit-grid', machines, true);
@@ -869,12 +1195,12 @@ async function createMachine(e) {
   e.preventDefault();
   const f = e.target;
   await api('/api/machines', 'POST', {
-    name:   f.name.value,
-    status: f.status.value,
-    build_x: parseFloat(f.bx.value) || 250,
-    build_y: parseFloat(f.by.value) || 250,
-    build_z: parseFloat(f.bz.value) || 300,
-    notes:  f.notes.value,
+    name:    f.name.value,
+    status:  f.status.value,
+    build_x: parseFloat(f.bx.value) || 200,
+    build_y: parseFloat(f.by.value) || 200,
+    build_z: parseFloat(f.bz.value) || 200,
+    notes:   f.notes.value,
   });
   f.reset();
   closeModal('m-new-machine');
@@ -886,13 +1212,13 @@ async function createMachine(e) {
 function openEditMachine(id) {
   const m = machines.find(x => x.id === id);
   if (!m) return;
-  document.getElementById('em-id').value    = m.id;
-  document.getElementById('em-name').value  = m.name;
+  document.getElementById('em-id').value     = m.id;
+  document.getElementById('em-name').value   = m.name;
   document.getElementById('em-status').value = m.status;
-  document.getElementById('em-bx').value    = m.build_x;
-  document.getElementById('em-by').value    = m.build_y;
-  document.getElementById('em-bz').value    = m.build_z;
-  document.getElementById('em-notes').value = m.notes || '';
+  document.getElementById('em-bx').value     = m.build_x;
+  document.getElementById('em-by').value     = m.build_y;
+  document.getElementById('em-bz').value     = m.build_z;
+  document.getElementById('em-notes').value  = m.notes || '';
   openModal('m-edit-machine');
 }
 
@@ -921,9 +1247,9 @@ async function deleteMachine(id) {
   loadDashboard();
 }
 
-// ---------------------------------------------------------------
+// ================================================================
 // Recommendation
-// ---------------------------------------------------------------
+// ================================================================
 async function getRecommendation(orderId) {
   currentRecOrder = orderId;
   const order = orders.find(o => o.id === orderId) || await api('/api/orders/' + orderId);
@@ -933,23 +1259,20 @@ async function getRecommendation(orderId) {
     `<div style="text-align:center;padding:30px"><span class="spin"></span></div>`;
   openModal('m-rec');
   const recs = await api('/api/recommend/' + orderId);
-  renderRecs(recs, orderId, order);
+  renderRecs(recs, orderId);
 }
 
-function renderRecs(recs, orderId, order) {
+function renderRecs(recs, orderId) {
   const available   = recs.filter(r => r.available);
   const unavailable = recs.filter(r => !r.available);
-
   let html = `<div class="alert alert-info">
     Ranked by: queue time · load balance · batch opportunity.
-    Lower score = faster turnaround for your client.
   </div>`;
-
   if (!available.length)
     html += `<div class="alert alert-warn">All machines are currently in maintenance or offline.</div>`;
 
   available.forEach((r, i) => {
-    const best = i === 0;
+    const best     = i === 0;
     const batchTag = r.batch_opportunity
       ? `<span style="background:#fef3c7;color:#92400e;padding:2px 9px;border-radius:99px;font-size:.72rem;font-weight:700">Batch opportunity</span>`
       : '';
@@ -965,10 +1288,7 @@ function renderRecs(recs, orderId, order) {
       </div>
       <ul class="rec-reasons">${r.reasons.map(x => `<li>${x}</li>`).join('')}</ul>
       <div class="rec-bot">
-        <span class="rec-nums">
-          Queue: <strong>${r.queue_hours}h</strong> &nbsp;·&nbsp;
-          30-day use: <strong>${r.utilization_hours}h</strong>
-        </span>
+        <span class="rec-nums">Queue: <strong>${r.queue_hours}h</strong> &nbsp;·&nbsp; 30-day use: <strong>${r.utilization_hours}h</strong></span>
         <button class="btn btn-primary btn-sm"
           onclick="showAssignForm(${r.machine.id},'${r.machine.name.replace(/'/g,"\\'")}',${orderId})">
           Assign to this machine →
@@ -976,15 +1296,12 @@ function renderRecs(recs, orderId, order) {
       </div>
     </div>`;
   });
-
   unavailable.forEach(r => {
-    html += `
-    <div class="rec-card unavail">
+    html += `<div class="rec-card unavail">
       <div class="rec-top"><strong>${r.machine.name}</strong>${badge(r.machine.status)}</div>
       <div style="font-size:.8rem;color:var(--gray-5)">${r.warnings.join(', ')}</div>
     </div>`;
   });
-
   document.getElementById('rec-body').innerHTML = html;
 }
 
@@ -995,8 +1312,8 @@ function showAssignForm(machineId, machineName, orderId) {
       <label>Estimated Build Time (hours) *</label>
       <input type="number" id="assign-h" placeholder="e.g. 24" min="0" step="0.5">
       <div class="fg-sub">
-        In LPBF the build time is set by the tallest part (Z height). Enter your best estimate —
-        it's used to calculate queue wait times for future orders.
+        In LPBF the build time is dominated by the tallest part (Z height). This estimate
+        is used to calculate queue wait times and drive the countdown timer.
       </div>
     </div>
     <div class="fg"><label>Notes</label>
@@ -1012,34 +1329,34 @@ async function doAssign(machineId, orderId) {
   const h = parseFloat(document.getElementById('assign-h').value);
   if (!h || h <= 0) { alert('Please enter a build time estimate (hours).'); return; }
   await api('/api/assign', 'POST', {
-    machine_id:       machineId,
-    order_id:         orderId,
-    estimated_hours:  h,
+    machine_id:      machineId,
+    order_id:        orderId,
+    estimated_hours: h,
     notes: document.getElementById('assign-n').value,
   });
   closeModal('m-rec');
   toast('Order assigned!');
   loadDashboard();
   loadOrders();
+  if (document.getElementById('tab-schedule').classList.contains('active')) loadSchedule();
 }
 
-// ---------------------------------------------------------------
+// ================================================================
 // Job status
-// ---------------------------------------------------------------
+// ================================================================
 function openJobModal(jobId, currentStatus) {
   const transitions = {
     queued:   ['printing', 'cancelled'],
     printing: ['completed', 'queued', 'cancelled'],
   };
-  const opts = transitions[currentStatus] || [];
+  const opts   = transitions[currentStatus] || [];
   const labels = { printing:'Mark as Printing', completed:'Mark as Completed', queued:'Move back to Queued', cancelled:'Cancel Job' };
-  const colours = { printing:'btn-primary', completed:'btn-green', queued:'btn-ghost', cancelled:'btn-danger' };
-
+  const cls    = { printing:'btn-primary', completed:'btn-green', queued:'btn-ghost', cancelled:'btn-danger' };
   document.getElementById('job-body').innerHTML = `
     <p style="margin-bottom:14px">Current status: ${badge(currentStatus)}</p>
     ${opts.length
       ? `<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px">
-           ${opts.map(s => `<button class="btn ${colours[s]}" onclick="setJobStatus(${jobId},'${s}')">${labels[s]}</button>`).join('')}
+           ${opts.map(s => `<button class="btn ${cls[s]}" onclick="setJobStatus(${jobId},'${s}')">${labels[s]}</button>`).join('')}
          </div>`
       : `<p style="color:var(--gray-5)">No further transitions available.</p>`}
     <div style="text-align:right">
@@ -1053,12 +1370,211 @@ async function setJobStatus(jobId, status) {
   closeModal('m-job');
   toast('Status updated to: ' + status);
   loadDashboard();
-  if (document.getElementById('tab-orders').classList.contains('active')) loadOrders();
+  if (document.getElementById('tab-orders').classList.contains('active'))   loadOrders();
+  if (document.getElementById('tab-schedule').classList.contains('active')) loadSchedule();
 }
 
-// ---------------------------------------------------------------
+// ================================================================
+// GANTT — load & view toggle
+// ================================================================
+function setGanttView(days, btn) {
+  ganttViewDays = days;
+  document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (ganttData) renderGantt(ganttData);
+}
+
+async function loadSchedule() {
+  document.getElementById('gantt-container').innerHTML =
+    `<div style="text-align:center;padding:40px"><span class="spin"></span></div>`;
+  ganttData = await api('/api/gantt');
+  renderGantt(ganttData);
+  renderGanttPending(ganttData.pending);
+}
+
+// ================================================================
+// GANTT — render
+// ================================================================
+function renderGantt(data) {
+  const { machines: ms, now: nowStr } = data;
+  const now       = new Date(nowStr);
+
+  // Time window: midnight of today → midnight + viewDays
+  const viewStart = new Date(now);
+  viewStart.setHours(0, 0, 0, 0);
+  const viewEnd   = new Date(viewStart.getTime() + ganttViewDays * 86400000);
+
+  const PX_PER_HOUR = Math.max(40, Math.round(1100 / (ganttViewDays * 24)));
+  const trackW      = ganttViewDays * 24 * PX_PER_HOUR;
+  const ROW_H       = 56;
+  const AXIS_H      = 44;
+
+  function toX(date) {
+    return (date - viewStart) / 3600000 * PX_PER_HOUR;
+  }
+  const nowX = toX(now);
+
+  // ---- Axis HTML ----
+  let axisHtml = `<div class="gantt-axis" style="width:${trackW}px">`;
+  // now flag in axis
+  if (nowX >= 0 && nowX <= trackW) {
+    axisHtml += `<div class="gantt-now-flag" style="left:${nowX}px;height:${AXIS_H}px"></div>
+                 <div class="gantt-now-label" style="left:${nowX + 4}px">NOW</div>`;
+  }
+  for (let d = 0; d < ganttViewDays; d++) {
+    const dayStart = new Date(viewStart.getTime() + d * 86400000);
+    const dx = toX(dayStart);
+    const dw = 24 * PX_PER_HOUR;
+    const dayLabel = dayStart.toLocaleDateString('en-GB', {weekday:'short', day:'numeric', month:'short'});
+    axisHtml += `<div class="gantt-axis-day" style="left:${dx}px;width:${dw}px">${dayLabel}</div>`;
+    // hour marks every 6h
+    for (let h = 6; h < 24; h += 6) {
+      const hx = toX(new Date(dayStart.getTime() + h * 3600000));
+      axisHtml += `<div class="gantt-axis-hour" style="left:${hx}px">${h}:00</div>`;
+    }
+  }
+  axisHtml += `</div>`;
+
+  // ---- Track rows HTML ----
+  let tracksHtml = '';
+  if (!ms.length) {
+    tracksHtml = `<div class="empty" style="padding:32px">No machines configured.</div>`;
+  } else {
+    ms.forEach(m => {
+      // Grid lines
+      let gridlines = '';
+      for (let d = 0; d < ganttViewDays; d++) {
+        for (let h = 0; h < 24; h += 6) {
+          const t  = new Date(viewStart.getTime() + (d * 24 + h) * 3600000);
+          const gx = toX(t);
+          gridlines += `<div class="${h === 0 ? 'gantt-gridline major' : 'gantt-gridline'}" style="left:${gx}px"></div>`;
+        }
+      }
+
+      // Now line
+      const nowLine = (nowX >= 0 && nowX <= trackW)
+        ? `<div class="gantt-now-row" style="left:${nowX}px"></div>`
+        : '';
+
+      // Job blocks
+      let blocks = '';
+      (m.jobs || []).forEach(j => {
+        if (!j.gantt_start || !j.gantt_end || !j.estimated_hours) return;
+        const jStart = new Date(j.gantt_start);
+        const jEnd   = new Date(j.gantt_end);
+        const rawX   = toX(jStart);
+        const endX   = toX(jEnd);
+        const bx     = Math.max(0, rawX);
+        const bw     = Math.max(4, endX - bx);
+        if (bx > trackW) return; // off screen right
+        const label  = j.reference || j.client_name;
+        const endLabel = jEnd.toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'});
+        const cls    = j.status === 'printing' ? 'printing' : 'queued';
+        blocks += `<div class="gantt-block ${cls}"
+                        style="left:${bx}px;width:${Math.min(bw, trackW - bx)}px"
+                        title="${label} — ${j.estimated_hours}h (ends ~${endLabel})">
+                     ${bw > 40 ? label : ''}
+                   </div>`;
+      });
+
+      const mName = m.name.replace(/'/g, "\\'");
+      tracksHtml += `
+        <div class="gantt-track-row" style="width:${trackW}px"
+             ondragover="ganttOver(event,this)"
+             ondragleave="ganttLeave(this)"
+             ondrop="ganttDrop(event,${m.id},'${mName}',this)">
+          ${gridlines}${nowLine}${blocks}
+        </div>`;
+    });
+  }
+
+  // ---- Sidebar ----
+  const sidebarRows = ms.map(m => `
+    <div class="gantt-sidebar-row">
+      <span>${m.name}</span>
+      ${badge(m.status)}
+    </div>`).join('');
+
+  const container = document.getElementById('gantt-container');
+  container.innerHTML = `
+    <div class="gantt-wrap">
+      <div class="gantt-sidebar">
+        <div class="gantt-sidebar-hd">Machine</div>
+        ${sidebarRows}
+      </div>
+      <div class="gantt-scroll">
+        ${axisHtml}
+        ${tracksHtml}
+      </div>
+    </div>`;
+}
+
+// ================================================================
+// GANTT — pending orders
+// ================================================================
+function renderGanttPending(pending) {
+  const el = document.getElementById('gantt-pending');
+  if (!pending.length) {
+    el.innerHTML = `<div class="card empty" style="width:100%;padding:20px">
+      <strong>No pending orders</strong>All orders have been assigned.
+    </div>`;
+    return;
+  }
+  el.innerHTML = pending.map(o => `
+    <div class="pending-card" draggable="true"
+         ondragstart="ganttDragStart(event,${o.id})"
+         ondragend="ganttDragEnd(event)">
+      <div class="pending-card-title">${o.reference || '#' + o.id}</div>
+      <div class="pending-card-sub">${o.client_name}</div>
+      <div class="pending-card-sub" style="margin-top:3px">${o.part_count} part${o.part_count !== 1 ? 's' : ''} · ${o.total_qty} pcs${o.due_date ? ' · Due ' + o.due_date : ''}</div>
+    </div>`).join('');
+}
+
+// ================================================================
+// GANTT — drag & drop
+// ================================================================
+function ganttDragStart(event, orderId) {
+  dragOrderId = orderId;
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('text/plain', String(orderId));
+  event.currentTarget.classList.add('dragging');
+}
+
+function ganttDragEnd(event) {
+  event.currentTarget.classList.remove('dragging');
+}
+
+function ganttOver(event, row) {
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'move';
+  row.classList.add('drop-target');
+}
+
+function ganttLeave(row) {
+  row.classList.remove('drop-target');
+}
+
+function ganttDrop(event, machineId, machineName, row) {
+  event.preventDefault();
+  row.classList.remove('drop-target');
+  const orderId = parseInt(event.dataTransfer.getData('text/plain') || dragOrderId);
+  if (!orderId) return;
+  dragOrderId = null;
+
+  // Find order details
+  const order = (ganttData?.pending || []).find(o => o.id === orderId);
+  const label = order ? (order.reference || '#' + orderId) + ' — ' + order.client_name : 'Order #' + orderId;
+
+  currentRecOrder = orderId;
+  document.getElementById('rec-title').textContent = `Assign to ${machineName}`;
+  document.getElementById('rec-body').innerHTML = '';
+  openModal('m-rec');
+  showAssignForm(machineId, machineName, orderId);
+}
+
+// ================================================================
 // Boot
-// ---------------------------------------------------------------
+// ================================================================
 loadDashboard();
 </script>
 </body>
