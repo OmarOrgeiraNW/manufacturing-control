@@ -663,6 +663,36 @@ input.warn-border { border-color: var(--amber); }
 .priority-box input[type=checkbox] { width: auto; cursor: pointer; }
 .priority-box-label { font-size: .875rem; font-weight: 500; }
 .priority-box-sub   { font-size: .75rem; color: var(--gray-5); }
+
+/* ============================
+   DATETIME PICKER
+   ============================ */
+input[type="datetime-local"] {
+  font-family: inherit;
+  font-size: .875rem;
+  padding: 7px 11px;
+  border: 1px solid var(--gray-3);
+  border-radius: var(--r);
+  background: #fff;
+  width: 100%;
+  cursor: pointer;
+  transition: border-color .15s, box-shadow .15s;
+}
+input[type="datetime-local"]:focus {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(37,99,235,.12);
+}
+.reassign-preview {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: var(--r);
+  padding: 12px 14px;
+  margin-top: 12px;
+  font-size: .875rem;
+}
+.reassign-preview-label { font-weight: 600; color: var(--blue); margin-bottom: 4px; }
+.reassign-preview-time  { font-variant-numeric: tabular-nums; color: var(--gray-7); }
 </style>
 </head>
 <body>
@@ -897,6 +927,34 @@ input.warn-border { border-color: var(--amber); }
       <button class="modal-close" onclick="closeModal('m-rec')">×</button>
     </div>
     <div id="rec-body"></div>
+  </div>
+</div>
+
+<!-- ===== MODAL: REASSIGN JOB ===== -->
+<div class="overlay" id="m-reassign">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-hd">
+      <h3>Move Job to Another Machine</h3>
+      <button class="modal-close" onclick="closeModal('m-reassign')">×</button>
+    </div>
+
+    <!-- Job + machine summary -->
+    <div id="reassign-info"></div>
+
+    <!-- Datetime picker -->
+    <div class="fg">
+      <label>Scheduled Start Time</label>
+      <input type="datetime-local" id="reassign-start" oninput="updateReassignPreview()">
+      <div class="fg-sub">When should printing begin on the new machine?</div>
+    </div>
+
+    <!-- Live preview -->
+    <div id="reassign-preview"></div>
+
+    <div class="modal-foot" style="margin-top:20px">
+      <button class="btn btn-ghost" onclick="closeModal('m-reassign')">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmReassign()">Confirm Move</button>
+    </div>
   </div>
 </div>
 
@@ -1721,30 +1779,100 @@ function jobDragEnd(event) {
   event.currentTarget.style.opacity = '';
 }
 
+// ================================================================
+// Reassign modal — move an existing job to a different machine
+// ================================================================
+let reassignState = { jobId: null, machineId: null, jobHours: 0 };
+
 function openReassignModal(jobId, newMachineId, newMachineName) {
-  // Find the job in ganttData
+  // Gather job details from ganttData
   let jobLabel = 'Job #' + jobId;
+  let jobHours = 0;
+  let fromName = '';
   for (const m of (ganttData?.machines || [])) {
     const j = (m.jobs || []).find(x => x.id === jobId);
-    if (j) { jobLabel = j.reference || j.client_name; break; }
+    if (j) {
+      jobLabel = j.reference || j.client_name;
+      jobHours = j.estimated_hours || 0;
+      fromName = m.name;
+      break;
+    }
   }
-  document.getElementById('rec-title').textContent = 'Move Job to Another Machine';
-  document.getElementById('rec-body').innerHTML = `
-    <div class="alert alert-warn">
-      Move <strong>${jobLabel}</strong> to <strong>${newMachineName}</strong>?
-      <br><span style="font-size:.8rem">If the job is currently printing it will be reset to queued on the new machine.</span>
+
+  reassignState = { jobId, machineId: newMachineId, jobHours };
+
+  // Summary strip
+  document.getElementById('reassign-info').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;
+                background:var(--gray-0);border:1px solid var(--gray-2);border-radius:var(--r);
+                padding:12px 14px;margin-bottom:18px;font-size:.875rem">
+      <div>
+        <div style="font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gray-5);margin-bottom:3px">From</div>
+        <strong>${fromName || '—'}</strong>
+      </div>
+      <div style="font-size:1.4rem;color:var(--gray-3)">→</div>
+      <div>
+        <div style="font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gray-5);margin-bottom:3px">To</div>
+        <strong>${newMachineName}</strong>
+      </div>
     </div>
-    <div class="modal-foot" style="margin-top:8px">
-      <button class="btn btn-ghost" onclick="closeModal('m-rec')">Cancel</button>
-      <button class="btn btn-primary" onclick="doReassign(${jobId},${newMachineId})">Move Job</button>
+    <div style="font-size:.875rem;margin-bottom:16px;color:var(--gray-7)">
+      Job: <strong>${jobLabel}</strong>
+      ${jobHours ? `<span style="color:var(--gray-5);margin-left:8px">${jobHours}h estimated</span>` : ''}
     </div>`;
-  openModal('m-rec');
+
+  // Pre-fill datetime: next available slot on the new machine
+  const newMachine = (ganttData?.machines || []).find(m => m.id === newMachineId);
+  const lastJob    = (newMachine?.jobs || []).slice(-1)[0];
+  let defaultStart = new Date(ganttData?.now || Date.now());
+  if (lastJob?.gantt_end) defaultStart = new Date(lastJob.gantt_end);
+
+  // datetime-local needs "YYYY-MM-DDTHH:MM" format
+  const pad = n => String(n).padStart(2, '0');
+  const fmt  = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const input = document.getElementById('reassign-start');
+  input.value = fmt(defaultStart);
+  input.min   = fmt(new Date(ganttData?.now || Date.now()));
+
+  updateReassignPreview();
+  openModal('m-reassign');
 }
 
-async function doReassign(jobId, machineId) {
-  await api('/api/jobs/' + jobId + '/reassign', 'PUT', { machine_id: machineId });
-  closeModal('m-rec');
-  toast('Job moved to new machine');
+function updateReassignPreview() {
+  const val   = document.getElementById('reassign-start').value;
+  const el    = document.getElementById('reassign-preview');
+  const hours = reassignState.jobHours;
+  if (!val) { el.innerHTML = ''; return; }
+
+  const start = new Date(val);
+  const end   = hours > 0 ? new Date(start.getTime() + hours * 3600000) : null;
+  const dayFmt = { weekday:'long', day:'numeric', month:'long' };
+  const timeFmt = { hour:'2-digit', minute:'2-digit', hour12:false };
+
+  el.innerHTML = `
+    <div class="reassign-preview">
+      <div class="reassign-preview-label">Scheduled start</div>
+      <div class="reassign-preview-time" style="font-size:1rem;font-weight:700;margin-bottom:4px">
+        ${start.toLocaleDateString('en-GB', dayFmt)} at ${start.toLocaleTimeString('en-GB', timeFmt)}
+      </div>
+      ${end ? `<div class="reassign-preview-time" style="font-size:.8rem;color:var(--gray-5)">
+        Estimated end: ${end.toLocaleDateString('en-GB', dayFmt)} at ${end.toLocaleTimeString('en-GB', timeFmt)}
+        &nbsp;(${hours}h build time)
+      </div>` : ''}
+    </div>`;
+}
+
+async function confirmReassign() {
+  const val = document.getElementById('reassign-start').value;
+  if (!val) { alert('Please pick a start date and time.'); return; }
+
+  const scheduledStart = new Date(val).toISOString();
+  await api('/api/jobs/' + reassignState.jobId + '/reassign', 'PUT', {
+    machine_id:      reassignState.machineId,
+    scheduled_start: scheduledStart,
+  });
+  closeModal('m-reassign');
+  toast('Job moved and scheduled');
   loadDashboard();
   loadSchedule();
 }

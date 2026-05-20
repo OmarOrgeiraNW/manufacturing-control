@@ -73,6 +73,12 @@ def init_db():
         conn.commit()
     except Exception:
         pass
+    # Migration: add scheduled_start for precise scheduling
+    try:
+        conn.execute("ALTER TABLE jobs ADD COLUMN scheduled_start TEXT")
+        conn.commit()
+    except Exception:
+        pass
     conn.close()
 
 
@@ -533,11 +539,15 @@ def api_gantt():
                 if job["status"] == "printing" and job["started_at"]:
                     start = datetime.fromisoformat(job["started_at"])
                     end = start + timedelta(hours=hours)
-                    # cursor advances to whenever this finishes (may be in the past if overdue)
                     cursor = max(end, now)
                 else:
-                    start = cursor
-                    end = cursor + timedelta(hours=hours)
+                    # Honour a user-specified scheduled_start if it's in the future
+                    if job.get("scheduled_start"):
+                        sched = datetime.fromisoformat(job["scheduled_start"])
+                        start = max(sched, cursor)
+                    else:
+                        start = cursor
+                    end = start + timedelta(hours=hours)
                     cursor = end
                 job["gantt_start"] = start.isoformat()
                 job["gantt_end"] = end.isoformat()
@@ -590,16 +600,15 @@ def api_job_reassign(job_id):
         ).fetchone()
         new_sort = row[0] + 1
 
-        # Move the job
-        conn.execute(
-            "UPDATE jobs SET machine_id = ?, sort_order = ? WHERE id = ?",
-            (new_machine_id, new_sort, job_id),
-        )
+        scheduled_start = data.get("scheduled_start")  # ISO string or None
 
-        # If job was printing, reset it to queued on the new machine
-        if job["status"] == "printing":
-            conn.execute("UPDATE jobs SET status = 'queued', started_at = NULL WHERE id = ?", (job_id,))
-            conn.execute("UPDATE orders SET status = 'scheduled' WHERE id = ?", (order_id,))
+        # Move the job, reset to queued with the new scheduled_start
+        conn.execute(
+            "UPDATE jobs SET machine_id = ?, sort_order = ?, status = 'queued', "
+            "started_at = NULL, scheduled_start = ? WHERE id = ?",
+            (new_machine_id, new_sort, scheduled_start, job_id),
+        )
+        conn.execute("UPDATE orders SET status = 'scheduled' WHERE id = ?", (order_id,))
 
         # Release old machine if it has no remaining active jobs
         remaining_old = conn.execute(
@@ -609,12 +618,21 @@ def api_job_reassign(job_id):
         if remaining_old == 0:
             conn.execute("UPDATE machines SET status = 'idle' WHERE id = ?", (old_machine_id,))
 
-        # Activate new machine if it was idle
+        # If new machine is idle and scheduled_start is now or past, start printing immediately
         new_machine = dict(conn.execute("SELECT * FROM machines WHERE id = ?", (new_machine_id,)).fetchone())
-        if new_machine["status"] == "idle":
+        start_now = True
+        if scheduled_start:
+            try:
+                start_now = datetime.fromisoformat(scheduled_start) <= datetime.now()
+            except ValueError:
+                start_now = True
+
+        if new_machine["status"] == "idle" and start_now:
             conn.execute("UPDATE machines SET status = 'printing' WHERE id = ?", (new_machine_id,))
-            conn.execute("UPDATE jobs SET status = 'printing', started_at = ? WHERE id = ?",
-                         (datetime.now().isoformat(), job_id))
+            conn.execute(
+                "UPDATE jobs SET status = 'printing', started_at = ?, scheduled_start = NULL WHERE id = ?",
+                (datetime.now().isoformat(), job_id),
+            )
             conn.execute("UPDATE orders SET status = 'printing' WHERE id = ?", (order_id,))
 
         conn.commit()
