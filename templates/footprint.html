@@ -444,12 +444,12 @@ main {
         </div>
       </div>
       <div class="legend" id="bed-legend" style="display:none">
-        <div class="legend-item" id="legend-hull" style="display:none">
+        <div class="legend-item">
           <div class="legend-swatch" style="background:rgba(99,102,241,.35);border:1px solid #6366f1"></div>
-          <span>True footprint projection</span>
+          <span>Part footprint (XY projection)</span>
         </div>
         <div class="legend-item">
-          <div class="legend-swatch" style="background:#f0fdf4;border:1px dashed #16a34a"></div>
+          <div class="legend-swatch" style="background:#fafbfc;border:1px solid #6b7280"></div>
           <span>Available bed area</span>
         </div>
       </div>
@@ -789,10 +789,6 @@ function renderResults(d) {
   const notes = [...new Set(parts.map(p => p.geometry.source_note))];
   document.getElementById('d-source-note').textContent = notes.join(' | ');
 
-  // Footprint polygon legend (only for single-part single view)
-  document.getElementById('legend-hull').style.display =
-    (isSingle && parts[0].geometry.footprint_polygon) ? 'flex' : 'none';
-
   // View toggle: only for single-file uploads
   const toggle = document.getElementById('view-toggle');
   if (isSingle) {
@@ -878,14 +874,14 @@ function renderBedSVG(d, view) {
     if (fpd) {
       partsHtml += `<path d="${fpd}" fill="rgba(99,102,241,0.30)"
         stroke="#6366f1" stroke-width="1.5" fill-rule="evenodd"/>`;
-      document.getElementById('legend-hull').style.display = 'flex';
+    } else {
+      // No polygon available — fall back to plain bbox rect
+      partsHtml += `<rect x="${px}" y="${py}" width="${pw}" height="${ph}"
+        fill="rgba(59,130,246,0.30)" stroke="${color}" stroke-width="2" rx="2"/>`;
     }
 
+    // Dimension labels centred on the bbox
     partsHtml += `
-      <rect x="${px}" y="${py}" width="${pw}" height="${ph}"
-        fill="${fpd ? 'none' : 'rgba(59,130,246,0.30)'}"
-        stroke="${color}" stroke-width="2"
-        stroke-dasharray="${fpd ? '6,3' : 'none'}" rx="2"/>
       <text x="${px + pw/2}" y="${py + ph/2 - 6}" text-anchor="middle"
         font-size="11" font-weight="600" fill="#1d4ed8" style="pointer-events:none">
         ${fmt(geo.bbox_x)} × ${fmt(geo.bbox_y)} mm
@@ -897,7 +893,6 @@ function renderBedSVG(d, view) {
 
   } else {
     // Pack view — draw all placements from the packing result
-    document.getElementById('legend-hull').style.display = 'none';
     const MAX_RENDER = 500;
     const shown = pack.placements.slice(0, MAX_RENDER);
 
@@ -908,22 +903,17 @@ function renderBedSVG(d, view) {
       const pw = pl.w * scale;
       const ph = pl.h * scale;
 
-      // Draw true footprint for the first instance of each part type
-      const isFirstOfType = shown.findIndex(p => p.idx === pl.idx) === i;
-      if (isFirstOfType && geo.footprint_polygon) {
-        const fpd = footprintPath(geo.footprint_polygon, pl.x, pl.y);
-        if (fpd) {
-          const hex = color;
-          const fill = hexToRgba(hex, 0.30);
-          partsHtml += `<path d="${fpd}" fill="${fill}"
-            stroke="${hex}" stroke-width="1" fill-rule="evenodd"/>`;
-        }
+      const fpd = footprintPath(geo.footprint_polygon, pl.x, pl.y);
+      if (fpd) {
+        partsHtml += `<path d="${fpd}" fill="${hexToRgba(color, 0.28)}"
+          stroke="${color}" stroke-width="1" fill-rule="evenodd"/>`;
+      } else {
+        // Fall back to bbox rect when no polygon is available
+        partsHtml += `
+          <rect x="${px}" y="${py}" width="${pw}" height="${ph}"
+            fill="${hexToRgba(color, 0.22)}"
+            stroke="${color}" stroke-width="0.8" rx="1"/>`;
       }
-
-      partsHtml += `
-        <rect x="${px}" y="${py}" width="${pw}" height="${ph}"
-          fill="${hexToRgba(color, isFirstOfType ? 0 : 0.18)}"
-          stroke="${color}" stroke-width="${isFirstOfType ? 1.5 : 0.8}" rx="1"/>`;
     });
 
     if (pack.placements.length > MAX_RENDER) {
